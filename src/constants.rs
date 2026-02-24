@@ -2,17 +2,7 @@
 
 pub(crate) const MAX_PACKET_SIZE: usize = 512;
 
-///    TFTP supports five types of packets:
-///
-///           opcode  operation
-///             1     Read request (RRQ)
-///             2     Write request (WRQ)
-///             3     Data (DATA)
-///             4     Acknowledgment (ACK)
-///             5     Error (ERROR)
-///
-///    The TFTP header of a packet contains the  opcode  associated  with
-///    that packet.
+/// TFTP supports five types of packets. The TFTP header of a packet contains the opcode associated with that packet.
 #[repr(u16)]
 pub(crate) enum OpCode {
     ReadRequest = 1,

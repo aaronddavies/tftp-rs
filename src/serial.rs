@@ -10,6 +10,8 @@ use crate::constants::RequestType;
 use crate::constants::Mode;
 use crate::constants::ErrorCode;
 
+use crate::errors::TftprsError;
+
 trait Serial {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize;
 }
@@ -44,10 +46,6 @@ impl Request {
             mode,
         })
     }
-}
-
-enum TftprsError {
-    BadRequest,
 }
 
 impl Serial for Request {
