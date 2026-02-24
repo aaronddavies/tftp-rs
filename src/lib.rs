@@ -44,7 +44,8 @@ enum RequestType {
     Write = OpCode::WriteRequest as u8,
 }
 
-#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+#[repr(u16)]
 enum ErrorCode {
     Undefined = 0,
     FileNotFound = 1,
@@ -122,17 +123,55 @@ struct Data {
     data: Vec<u8>,
 }
 
+impl Serial for Data {
+    fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
+        let mut head = 0;
+        buffer[head..].copy_from_slice(&(OpCode::Data as u16).to_be_bytes());
+        head += 2;
+        buffer[head..].copy_from_slice(&self.block.to_be_bytes());
+        head += 2;
+        buffer[head..].copy_from_slice(&self.data[self.data.len()..]);
+        head += self.data.len();
+        head
+    }
+}
+
 struct Acknowledgement {
     block: u16,
 }
 
+impl Serial for Acknowledgement {
+    fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
+        let mut head = 0;
+        buffer[head..].copy_from_slice(&(OpCode::Acknowledgement as u16).to_be_bytes());
+        head += 2;
+        buffer[head..].copy_from_slice(&self.block.to_be_bytes());
+        head += 2;
+        head
+    }
+}
+
 /// Most errors cause termination of the connection.
 /// An error is signalled by sending an error packet.
+#[derive(Debug, Clone)]
 struct Error {
     // The error code is an integer indicating the nature of the error.
     code: ErrorCode,
     // The error message is intended for human consumption.
     message: String,
+}
+
+impl Serial for Error {
+    fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
+        let mut head = 0;
+        buffer[head..].copy_from_slice(&(OpCode::Error as u16).to_be_bytes());
+        head += 2;
+        buffer[head..].copy_from_slice(&(self.code as u16).to_be_bytes());
+        head += 2;
+        buffer[head..].copy_from_slice(&self.message.as_bytes());
+        head += self.message.len();
+        head
+    }
 }
 
 #[cfg(test)]
