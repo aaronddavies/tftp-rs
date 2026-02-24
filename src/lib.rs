@@ -1,6 +1,6 @@
 mod constants;
 mod serial;
-mod state;
+mod machine;
 mod errors;
 
 #[cfg(test)]

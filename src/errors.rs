@@ -1,4 +1,4 @@
 pub enum TftprsError {
-    BadRequest,
-    BadPacket
+    BadRequestAttempted,
+    BadPacketReceived
 }

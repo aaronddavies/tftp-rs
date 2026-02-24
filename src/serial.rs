@@ -38,7 +38,7 @@ impl Request {
         };
         let max_filename_size = MAX_PACKET_SIZE - FIXED_REQUEST_BYTES - mode_size;
         if filename.len() > max_filename_size {
-            return Err(TftprsError::BadRequest);
+            return Err(TftprsError::BadRequestAttempted);
         }
         Ok(Self {
             request,

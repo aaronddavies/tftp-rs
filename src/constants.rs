@@ -16,6 +16,8 @@ pub(crate) const TEXT_MODE: &str = "NETASCII";
 pub(crate) const BINARY_MODE: &str = "OCTET";
 pub(crate) const FIXED_REQUEST_BYTES: usize = 4;
 
+pub(crate) const DEFAULT_DESTINATION_TID: u16 = 69;
+
 /// The mode field contains the string "netascii", "octet", or "mail"
 /// (or any combination of upper and lower case, such as "NETASCII", NetAscii", etc.)
 /// in netascii indicating the three modes defined in the protocol.
