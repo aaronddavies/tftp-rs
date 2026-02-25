@@ -1,6 +1,6 @@
 /// Serialization of messages
 
-use crate::constants::MAX_PACKET_SIZE;
+use crate::constants::{MAX_DATA_SIZE, MAX_PACKET_SIZE};
 use crate::constants::TEXT_MODE;
 use crate::constants::BINARY_MODE;
 use crate::constants::FIXED_REQUEST_BYTES;
@@ -12,15 +12,18 @@ use crate::constants::ErrorCode;
 
 use crate::errors::TftprsError;
 
-trait Serial {
+pub(crate) trait Serial {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize;
 }
 
 /// Any transfer begins with a request to read or write a file, which also serves to request a connection.
-/// Size of filename must not exceed `match mode { binary => 503, text => 500 }` bytes
-/// (512 - 4 fixed - mode string)
+///
+/// The size of filename must not exceed `match mode { binary => 503, text => 500 }` bytes
+/// `(512 - 4 fixed - mode string)`
+///
+/// The request will take ownership of the filename.
 #[derive(Debug, Clone)]
-struct Request {
+pub(crate) struct Request {
     // RRQ and WRQ packets (opcodes 1 and 2 respectively)
     request: RequestType,
     // The file name is a sequence of bytes in netascii.
@@ -31,25 +34,33 @@ struct Request {
 }
 
 impl Request {
-    fn new(request: RequestType, filename: String, mode: Mode) -> Result<Self, TftprsError> {
+    fn filename_fits(mode: Mode, filename: &String) -> bool {
         let mode_size = match mode {
             Mode::Text => TEXT_MODE.len(),
             Mode::Binary => BINARY_MODE.len(),
         };
         let max_filename_size = MAX_PACKET_SIZE - FIXED_REQUEST_BYTES - mode_size;
-        if filename.len() > max_filename_size {
-            return Err(TftprsError::BadRequestAttempted);
+        filename.len() <= max_filename_size
+    }
+
+    pub(crate) fn new(request: RequestType, mode: Mode, filename: String) -> Result<Self, TftprsError> {
+        if Request::filename_fits(mode, &filename) {
+            Ok(Self {
+                request,
+                filename,
+                mode,
+            })
+        } else {
+            Err(TftprsError::BadRequestAttempted)
         }
-        Ok(Self {
-            request,
-            filename,
-            mode,
-        })
     }
 }
 
 impl Serial for Request {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
+        if !Request::filename_fits(self.mode, &self.filename) {
+            return 0;
+        }
         let mut head = 0;
         buffer[head..].copy_from_slice(&(self.request as u16).to_be_bytes());
         head += 2;
@@ -69,18 +80,30 @@ impl Serial for Request {
     }
 }
 
-struct Data {
+#[derive(Debug, Clone)]
+pub(crate) struct Data<'a> {
     block: u16,
-    data: Vec<u8>,
+    data: &'a Vec<u8>,
 }
 
-impl Serial for Data {
+impl<'a> Data<'a> {
+    pub(crate) fn new(block: u16, data: &'a Vec<u8>) -> Self {
+        Self { block, data }
+    }
+
+    pub (crate) fn offset(&self) -> usize {
+        self.block as usize * MAX_DATA_SIZE
+    }
+}
+
+impl<'a> Serial for Data<'a> {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
         buffer[head..].copy_from_slice(&(OpCode::Data as u16).to_be_bytes());
         head += 2;
         buffer[head..].copy_from_slice(&self.block.to_be_bytes());
         head += 2;
+        let offset =
         buffer[head..].copy_from_slice(&self.data[self.data.len()..]);
         head += self.data.len();
         head

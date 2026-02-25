@@ -15,6 +15,8 @@ pub(crate) enum OpCode {
 pub(crate) const TEXT_MODE: &str = "NETASCII";
 pub(crate) const BINARY_MODE: &str = "OCTET";
 pub(crate) const FIXED_REQUEST_BYTES: usize = 4;
+const FIXED_DATA_BYTES: usize = 4;
+pub(crate) const MAX_DATA_SIZE: usize = MAX_PACKET_SIZE - FIXED_DATA_BYTES;
 
 pub(crate) const DEFAULT_DESTINATION_TID: u16 = 69;
 
