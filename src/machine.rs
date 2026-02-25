@@ -63,11 +63,17 @@ impl<'a> Machine<'a> {
     }
 
     pub fn write_file(&mut self, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        if self.is_busy() {
+            return Err(TftprsError::Busy)
+        }
         self.block = 0;
         self.send_request(RequestType::Write, filename, file, outgoing)
     }
 
     pub fn read_file(&mut self, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        if self.is_busy() {
+            return Err(TftprsError::Busy)
+        }
         self.block = 1;
         self.send_request(RequestType::Read, filename, file, outgoing)
     }
@@ -80,9 +86,6 @@ impl<'a> Machine<'a> {
     /// # Returns:
     /// * `Ok(Header)`: The source ID, destination ID, and number of bytes of the outgoing message.
     fn send_request(&mut self, request_type: RequestType, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
-        if self.is_busy() {
-            return Err(TftprsError::Busy)
-        }
         if let Ok(request) = Request::new(request_type, self.mode, filename) {
             let count = request.serialize(outgoing);
             if request.serialize(outgoing) > 0 {
