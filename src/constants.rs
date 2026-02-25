@@ -1,9 +1,12 @@
+use crate::errors::TftprsError;
+
 /// Constants
 
 pub(crate) const MAX_PACKET_SIZE: usize = 512;
 
 /// TFTP supports five types of packets. The TFTP header of a packet contains the opcode associated with that packet.
 #[repr(u16)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum OpCode {
     ReadRequest = 1,
     WriteRequest = 2,
@@ -12,10 +15,25 @@ pub(crate) enum OpCode {
     Error = 5,
 }
 
+impl TryFrom<u16> for OpCode {
+    type Error = TftprsError;
+
+    fn try_from(value: u16) -> Result<Self, TftprsError> {
+        match value {
+            1 => Ok(OpCode::ReadRequest),
+            2 => Ok(OpCode::WriteRequest),
+            3 => Ok(OpCode::Data),
+            4 => Ok(OpCode::Acknowledgement),
+            5 => Ok(OpCode::Error),
+            _ => Err(TftprsError::BadPacketReceived),
+        }
+    }
+}
+
 pub(crate) const TEXT_MODE: &str = "NETASCII";
 pub(crate) const BINARY_MODE: &str = "OCTET";
 pub(crate) const FIXED_REQUEST_BYTES: usize = 4;
-const FIXED_DATA_BYTES: usize = 4;
+pub(crate) const FIXED_DATA_BYTES: usize = 4;
 pub(crate) const MAX_DATA_SIZE: usize = MAX_PACKET_SIZE - FIXED_DATA_BYTES;
 
 pub(crate) const DEFAULT_DESTINATION_TID: u16 = 69;

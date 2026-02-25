@@ -84,11 +84,12 @@ impl Serial for Request {
 pub(crate) struct Data<'a> {
     block: u16,
     data: &'a Vec<u8>,
+    length: usize
 }
 
 impl<'a> Data<'a> {
-    pub(crate) fn new(block: u16, data: &'a Vec<u8>) -> Self {
-        Self { block, data }
+    pub(crate) fn new(block: u16, data: &'a Vec<u8>, length: usize) -> Self {
+        Self { block, data, length }
     }
 
     pub (crate) fn offset(&self) -> usize {
@@ -103,18 +104,24 @@ impl<'a> Serial for Data<'a> {
         head += 2;
         buffer[head..].copy_from_slice(&self.block.to_be_bytes());
         head += 2;
-        let offset =
-        buffer[head..].copy_from_slice(&self.data[self.data.len()..]);
-        head += self.data.len();
+        let offset = self.offset();
+        buffer[head..head+self.length].copy_from_slice(&self.data[offset..offset+self.length]);
+        head += self.length;
         head
     }
 }
 
-struct Acknowledgement {
+pub(crate) struct Ack {
     block: u16,
 }
 
-impl Serial for Acknowledgement {
+impl Ack {
+    pub fn new(block: u16) -> Self {
+        Self { block }
+    }
+}
+
+impl Serial for Ack {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
         buffer[head..].copy_from_slice(&(OpCode::Acknowledgement as u16).to_be_bytes());

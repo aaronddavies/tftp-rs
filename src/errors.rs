@@ -9,5 +9,7 @@ pub enum TftprsError {
     #[error("Connection or transaction is already active")]
     Busy,
     #[error("Connection terminated")]
-    Terminated
+    Terminated,
+    #[error("No file")]
+    NoFile,
 }

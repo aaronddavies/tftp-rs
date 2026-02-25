@@ -1,15 +1,14 @@
-use crate::constants::{Mode, OpCode, MAX_DATA_SIZE};
+use std::cmp::min;
+use crate::constants::{ErrorCode, Mode, OpCode, MAX_DATA_SIZE, FIXED_DATA_BYTES};
 use crate::constants::RequestType;
 use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::DEFAULT_DESTINATION_TID;
 
 use crate::errors::TftprsError;
 
-use crate::states::{State, TerminalState};
-use crate::states::IdleState;
-
 use rand::rngs::SmallRng;
 use rand::Rng;
+use crate::serial::Ack;
 use crate::serial::{Data, Request};
 use crate::serial::Serial;
 
@@ -63,6 +62,16 @@ impl<'a> Machine<'a> {
         self.request_type.is_some() && !self.terminated
     }
 
+    pub fn write_file(&mut self, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        self.block = 0;
+        self.send_request(RequestType::Write, filename, file, outgoing)
+    }
+
+    pub fn read_file(&mut self, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        self.block = 1;
+        self.send_request(RequestType::Read, filename, file, outgoing)
+    }
+
     /// Make a write request to a remote server.
     /// # Arguments:
     /// * `filename`: The name of the file for the server to write.
@@ -93,50 +102,102 @@ impl<'a> Machine<'a> {
         }
     }
 
-    pub fn write_file(&mut self, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
-        self.send_request(RequestType::Write, filename, file, outgoing)
+    fn send_error(&mut self, code: ErrorCode, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+
     }
 
-    pub fn read_file(&mut self, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
-        self.send_request(RequestType::Read, filename, file, outgoing)
-    }
-
-    pub fn process_message(&mut self, received: &mut [u8; MAX_PACKET_SIZE], outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
-        if let Ok(opcode_bytes) = received[0..2].try_into() {
-            let opcode: u16 = u16::from_be_bytes(opcode_bytes);
-            match opcode {
-                OpCode::Acknowledgement => {
-                    self.handle_ack(received, outgoing)
-                },
-                OpCode::Data => {
-                    self.handle_data(received, outgoing)
-                },
-                 => {
-                    self.handle_read_request(received, outgoing)
-                },
-                OpCode::WriteRequest => {
-                    self.handle_write_request(received, outgoing)
-                }
-
-            }
-            if opcode != OpCode::Acknowledgement as u16 {
-                return Err(TftprsError::BadPacketReceived)
-            }
-        } else {
+    pub fn process_reply(&mut self, received: &mut [u8; MAX_PACKET_SIZE], length: usize, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        if length > MAX_PACKET_SIZE {
             return Err(TftprsError::BadPacketReceived)
         }
+        if let Ok(opcode_bytes) = received[0..2].try_into() {
+            let opcode: u16 = u16::from_be_bytes(opcode_bytes);
+            if let Ok(opcode_match) = OpCode::try_from(opcode) {
+                match opcode_match {
+                    OpCode::Acknowledgement => {
+                        if let Some(RequestType::Write) = self.request_type {
+                            self.handle_ack(received, outgoing)
+                        } else {
+                            Err(TftprsError::BadPacketReceived)
+                        }
+                    },
+                    OpCode::Data => {
+                        if let Some(RequestType::Read) = self.request_type {
+                            self.handle_data(received, length - FIXED_DATA_BYTES, outgoing)
+                        } else {
+                            Err(TftprsError::BadPacketReceived)
+                        }
+                    },
+                    _ => {
+                        self.send_error(ErrorCode::IllegalOperation, outgoing)
+                    },
+                }
+            }
+        } else {
+            Err(TftprsError::BadPacketReceived)
+        }
+    }
+
+    fn check_block(&self, received: &mut [u8; MAX_PACKET_SIZE]) -> Result<(), TftprsError> {
         if let Ok(block_bytes) = received[2..4].try_into() {
             let block = u16::from_be_bytes(block_bytes);
             if block != self.block {
                 return Err(TftprsError::BadPacketReceived)
             }
         }
-        let new_block = self.block + 1;
-        let offset = new_block as usize * MAX_DATA_SIZE;
-        if offset >= self.source.len() {
-            return Ok(Box::new(TerminalState::default()))
+        Ok(())
+    }
+
+    fn handle_ack(&mut self, received: &mut [u8; MAX_PACKET_SIZE], outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        self.check_block(received)?;
+        self.block += 1;
+        let offset = self.block as usize * MAX_DATA_SIZE;
+        if let Some(file) = &self.file {
+            if offset >= file.len() {
+                self.terminated = true;
+                Ok(Header {
+                    length: 0,
+                    source: self.source,
+                    destination: self.destination,
+                })
+            } else {
+                let packet_size = min(file.len() - offset, MAX_DATA_SIZE);
+                let data = Data::new(self.block, file, packet_size);
+                let count = data.serialize(outgoing);
+                Ok(Header {
+                    length: count,
+                    source: self.source,
+                    destination: self.destination,
+                })
+            }
+        } else {
+            Err(TftprsError::NoFile)
         }
-        let data = Data::new(new_block, self.source);
-        data.serialize(outgoing);
+    }
+
+    fn handle_data(&mut self, received: &mut [u8; MAX_PACKET_SIZE], length: usize, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        self.check_block(received)?;
+        if let Some(file) = &mut self.file {
+            file[self.block as usize..self.block as usize + length].copy_from_slice(&received[0..length]);
+        } else {
+            return Err(TftprsError::NoFile)
+        }
+        if length < MAX_DATA_SIZE {
+            self.terminated = true;
+            Ok(Header {
+                length: 0,
+                source: self.source,
+                destination: self.destination,
+            })
+        } else {
+            let ack = Ack::new(self.block);
+            let count = ack.serialize(outgoing);
+            self.block += 1;
+            Ok(Header {
+                length: count,
+                source: self.source,
+                destination: self.destination,
+            })
+        }
     }
 }

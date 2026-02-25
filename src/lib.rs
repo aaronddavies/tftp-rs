@@ -2,7 +2,6 @@ mod constants;
 mod serial;
 mod machine;
 mod errors;
-mod states;
 
 #[cfg(test)]
 mod tests {
