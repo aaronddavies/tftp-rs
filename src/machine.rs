@@ -132,6 +132,8 @@ impl<'a> Machine<'a> {
                         self.send_error(ErrorCode::IllegalOperation, outgoing)
                     },
                 }
+            } else {
+                self.send_error(ErrorCode::IllegalOperation, outgoing)
             }
         } else {
             Err(TftprsError::BadPacketReceived)
@@ -149,11 +151,14 @@ impl<'a> Machine<'a> {
     }
 
     fn handle_ack(&mut self, received: &mut [u8; MAX_PACKET_SIZE], outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        // Verify the header.
         self.check_block(received)?;
+        // Advance the block for the next write.
         self.block += 1;
         let offset = self.block as usize * MAX_DATA_SIZE;
         if let Some(file) = &self.file {
             if offset >= file.len() {
+                // If there is no more data to write, then terminate.
                 self.terminated = true;
                 Ok(Header {
                     length: 0,
@@ -161,6 +166,7 @@ impl<'a> Machine<'a> {
                     destination: self.destination,
                 })
             } else {
+                // Send the next packet.
                 let packet_size = min(file.len() - offset, MAX_DATA_SIZE);
                 let data = Data::new(self.block, file, packet_size);
                 let count = data.serialize(outgoing);
@@ -176,28 +182,28 @@ impl<'a> Machine<'a> {
     }
 
     fn handle_data(&mut self, received: &mut [u8; MAX_PACKET_SIZE], length: usize, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<Header, TftprsError> {
+        // Verify the header.
         self.check_block(received)?;
         if let Some(file) = &mut self.file {
+            // Write the received data.
             file[self.block as usize..self.block as usize + length].copy_from_slice(&received[0..length]);
         } else {
             return Err(TftprsError::NoFile)
         }
         if length < MAX_DATA_SIZE {
+            // If there is no more data coming, then terminate.
             self.terminated = true;
-            Ok(Header {
-                length: 0,
-                source: self.source,
-                destination: self.destination,
-            })
         } else {
-            let ack = Ack::new(self.block);
-            let count = ack.serialize(outgoing);
+            // Otherwise, advance for the next data packet.
             self.block += 1;
-            Ok(Header {
-                length: count,
-                source: self.source,
-                destination: self.destination,
-            })
         }
+        // Acknowledge the received data.
+        let ack = Ack::new(self.block);
+        let count = ack.serialize(outgoing);
+        Ok(Header {
+            length: count,
+            source: self.source,
+            destination: self.destination,
+        })
     }
 }
