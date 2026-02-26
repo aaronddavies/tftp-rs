@@ -1,5 +1,6 @@
 //! Serialization of messages
 
+use std::cmp::min;
 use crate::constants::BINARY_MODE;
 use crate::constants::FIXED_REQUEST_BYTES;
 use crate::constants::MAX_DATA_SIZE;
@@ -67,20 +68,15 @@ impl Serial for Request {
             return 0;
         }
         let mut head = 0;
-        buffer[head..].copy_from_slice(&(self.request as u16).to_be_bytes());
-        head += 2;
-        buffer[head..].copy_from_slice(self.filename.as_bytes());
-        head += self.filename.len();
-        buffer[head] = 0;
-        head += 1;
+        write_bytes(buffer, &mut head, &(self.request as u16).to_be_bytes());
+        write_bytes(buffer, &mut head, self.filename.as_bytes());
+        write_bytes(buffer, &mut head, &[0x0]);
         let mode_string = match self.mode {
             Mode::Text => TEXT_MODE,
             Mode::Binary => BINARY_MODE,
         };
-        buffer[head..].copy_from_slice(mode_string.as_bytes());
-        head += mode_string.len();
-        buffer[head] = 0;
-        head += 1;
+        write_bytes(buffer, &mut head, mode_string.as_bytes());
+        write_bytes(buffer, &mut head, &[0x0]);
         head
     }
 }
@@ -89,33 +85,34 @@ impl Serial for Request {
 pub(crate) struct Data<'a> {
     block: u16,
     data: &'a Vec<u8>,
-    length: usize,
 }
 
 impl<'a> Data<'a> {
-    pub(crate) fn new(block: u16, data: &'a Vec<u8>, length: usize) -> Self {
-        Self {
+    pub(crate) fn new(block: u16, data: &'a Vec<u8>) -> Option<Self> {
+        if block == 0 {
+            return None;
+        }
+        if (block - 1) as usize * MAX_DATA_SIZE > data.len() {
+            return None
+        }
+        Some(Self {
             block,
             data,
-            length,
-        }
+        })
     }
 
     pub(crate) fn offset(&self) -> usize {
-        self.block as usize * MAX_DATA_SIZE
+        (self.block - 1) as usize * MAX_DATA_SIZE
     }
 }
 
 impl<'a> Serial for Data<'a> {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
-        buffer[head..].copy_from_slice(&(OpCode::Data as u16).to_be_bytes());
-        head += 2;
-        buffer[head..].copy_from_slice(&self.block.to_be_bytes());
-        head += 2;
-        let offset = self.offset();
-        buffer[head..head + self.length].copy_from_slice(&self.data[offset..offset + self.length]);
-        head += self.length;
+        write_bytes(buffer, &mut head, &(OpCode::Data as u16).to_be_bytes());
+        write_bytes(buffer, &mut head, &self.block.to_be_bytes());
+        let count = min(MAX_DATA_SIZE, self.data.len() - self.offset());
+        write_bytes(buffer, &mut head, &self.data[self.offset()..self.offset() + count]);
         head
     }
 }
@@ -133,10 +130,8 @@ impl Ack {
 impl Serial for Ack {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
-        buffer[head..].copy_from_slice(&(OpCode::Acknowledgement as u16).to_be_bytes());
-        head += 2;
-        buffer[head..].copy_from_slice(&self.block.to_be_bytes());
-        head += 2;
+        write_bytes(buffer, &mut head, &(OpCode::Acknowledgement as u16).to_be_bytes());
+        write_bytes(buffer, &mut head, &self.block.to_be_bytes());
         head
     }
 }
@@ -163,20 +158,58 @@ impl Error {
 impl Serial for Error {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
-        buffer[head..].copy_from_slice(&(OpCode::Error as u16).to_be_bytes());
-        head += 2;
-        buffer[head..].copy_from_slice(&(self.code as u16).to_be_bytes());
-        head += 2;
-        buffer[head..].copy_from_slice(self.message.as_bytes());
-        head += self.message.len();
+        write_bytes(buffer, &mut head, &(OpCode::Error as u16).to_be_bytes());
+        write_bytes(buffer, &mut head, &(self.code as u16).to_be_bytes());
+        write_bytes(buffer, &mut head, self.message.as_bytes());
         head
     }
+}
+
+/// Helper to write bytes from source to buffer and advance the head pointer.
+fn write_bytes(buffer: &mut [u8; MAX_PACKET_SIZE], head: &mut usize, source: &[u8]) {
+    let count = source.len();
+    buffer[*head..*head + count].copy_from_slice(source);
+    *head += count;
 }
 
 mod test {
     use super::*;
     #[test]
-    fn test_request() {
+    fn test_read_request() {
+        let request = Request::new(
+            RequestType::Read,
+            Mode::Binary,
+            String::from("ABCDE")
+        );
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        request.unwrap().serialize(&mut tx_buffer);
+        let expected: [u8; 14] =
+            [0x0, 0x1, 0x41, 0x42, 0x43, 0x44, 0x45, 0x0, 0x4F, 0x43, 0x54, 0x45, 0x54, 0x0];
+        assert_eq!(expected, tx_buffer[0..14]);
+    }
 
+    #[test]
+    fn test_write_request() {
+        let request = Request::new(
+            RequestType::Write,
+            Mode::Text,
+            String::from("ABCDE")
+        );
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        request.unwrap().serialize(&mut tx_buffer);
+        let expected: [u8; 17] =
+            [0x0, 0x2, 0x41, 0x42, 0x43, 0x44, 0x45, 0x0, 0x4E, 0x45, 0x54, 0x41, 0x53, 0x43, 0x49, 0x49, 0x0];
+        assert_eq!(expected, tx_buffer[0..17]);
+    }
+
+    #[test]
+    fn test_one_gram_data() {
+        let my_datagram: Vec<u8> = vec![0x5a, 0xa5];
+        let data = Data::new(1, &my_datagram);
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        data.unwrap().serialize(&mut tx_buffer);
+        let expected: [u8; 6] =
+            [0x0, 0x3, 0x0, 0x1, 0x5a, 0xa5];
+        assert_eq!(expected, tx_buffer[0..6]);
     }
 }

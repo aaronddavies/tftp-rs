@@ -5,7 +5,6 @@ use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::RequestType;
 use crate::constants::TEXT_MODE;
 use crate::constants::{ErrorCode, FIXED_DATA_BYTES, MAX_DATA_SIZE, Mode, OpCode};
-use std::cmp::min;
 
 use crate::errors::TftprsError;
 
@@ -319,18 +318,13 @@ impl<'a> Machine<'a> {
 
     /// Writes out the current block of the file.
     fn send_block(&mut self, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<usize, TftprsError> {
-        let offset = self.block as usize * MAX_DATA_SIZE;
         if let Some(file) = &self.file {
-            if offset >= file.len() {
-                // If there is no more data to write, then terminate.
-                self.request_type = None;
-                Ok(0)
-            } else {
-                // Send the next packet.
-                let packet_size = min(file.len() - offset, MAX_DATA_SIZE);
-                let data = Data::new(self.block, file, packet_size);
+            if let Some(data) = Data::new(self.block, file) {
                 let count = data.serialize(outgoing);
                 Ok(count)
+            } else {
+                self.request_type = None;
+                Ok(0)
             }
         } else {
             Err(TftprsError::NoFile)
