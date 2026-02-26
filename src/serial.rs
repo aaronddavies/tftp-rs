@@ -1,15 +1,14 @@
+use crate::constants::BINARY_MODE;
+use crate::constants::FIXED_REQUEST_BYTES;
 /// Serialization of messages
-
 use crate::constants::MAX_DATA_SIZE;
 use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::TEXT_MODE;
-use crate::constants::BINARY_MODE;
-use crate::constants::FIXED_REQUEST_BYTES;
 
+use crate::constants::ErrorCode;
+use crate::constants::Mode;
 use crate::constants::OpCode;
 use crate::constants::RequestType;
-use crate::constants::Mode;
-use crate::constants::ErrorCode;
 
 use crate::errors::TftprsError;
 
@@ -44,7 +43,11 @@ impl Request {
         filename.len() <= max_filename_size
     }
 
-    pub(crate) fn new(request: RequestType, mode: Mode, filename: String) -> Result<Self, TftprsError> {
+    pub(crate) fn new(
+        request: RequestType,
+        mode: Mode,
+        filename: String,
+    ) -> Result<Self, TftprsError> {
         if Request::filename_fits(mode, &filename) {
             Ok(Self {
                 request,
@@ -85,15 +88,19 @@ impl Serial for Request {
 pub(crate) struct Data<'a> {
     block: u16,
     data: &'a Vec<u8>,
-    length: usize
+    length: usize,
 }
 
 impl<'a> Data<'a> {
     pub(crate) fn new(block: u16, data: &'a Vec<u8>, length: usize) -> Self {
-        Self { block, data, length }
+        Self {
+            block,
+            data,
+            length,
+        }
     }
 
-    pub (crate) fn offset(&self) -> usize {
+    pub(crate) fn offset(&self) -> usize {
         self.block as usize * MAX_DATA_SIZE
     }
 }
@@ -106,7 +113,7 @@ impl<'a> Serial for Data<'a> {
         buffer[head..].copy_from_slice(&self.block.to_be_bytes());
         head += 2;
         let offset = self.offset();
-        buffer[head..head+self.length].copy_from_slice(&self.data[offset..offset+self.length]);
+        buffer[head..head + self.length].copy_from_slice(&self.data[offset..offset + self.length]);
         head += self.length;
         head
     }
@@ -145,7 +152,10 @@ pub(crate) struct Error {
 
 impl Error {
     pub fn new(error_code: ErrorCode, message: String) -> Self {
-        Self { code: error_code, message }
+        Self {
+            code: error_code,
+            message,
+        }
     }
 }
 
@@ -160,4 +170,10 @@ impl Serial for Error {
         head += self.message.len();
         head
     }
+}
+
+mod test {
+    use super::*;
+    #[test]
+    fn test_request() {}
 }

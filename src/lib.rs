@@ -1,13 +1,12 @@
 mod constants;
-mod serial;
-mod machine;
 mod errors;
+mod machine;
+mod serial;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-    }
+    fn it_works() {}
 }
