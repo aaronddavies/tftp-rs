@@ -1,7 +1,7 @@
-mod constants;
-mod errors;
-mod machine;
-mod serial;
+pub(crate) mod constants;
+pub mod errors;
+pub mod machine;
+pub(crate) mod serial;
 
 #[cfg(test)]
 mod tests {

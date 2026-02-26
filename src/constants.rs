@@ -1,8 +1,8 @@
+//! Constants
+
 use crate::errors::TftprsError;
 
-/// Constants
-
-pub(crate) const MAX_PACKET_SIZE: usize = 512;
+pub const MAX_PACKET_SIZE: usize = 512;
 
 /// TFTP supports five types of packets. The TFTP header of a packet contains the opcode associated with that packet.
 #[repr(u16)]
@@ -40,7 +40,7 @@ pub(crate) const MAX_DATA_SIZE: usize = MAX_PACKET_SIZE - FIXED_DATA_BYTES;
 /// (or any combination of upper and lower case, such as "NETASCII", NetAscii", etc.)
 /// in netascii indicating the three modes defined in the protocol.
 #[derive(Debug, Copy, Clone, Default)]
-pub(crate) enum Mode {
+pub enum Mode {
     /// A host which receives netascii mode data must translate the data to its own format.
     Text,
     /// Octet mode is used to transfer a file that is in the 8-bit format of the machine from which the file is being transferred.
@@ -50,14 +50,14 @@ pub(crate) enum Mode {
 
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
-pub(crate) enum RequestType {
+pub enum RequestType {
     Read = OpCode::ReadRequest as u8,
     Write = OpCode::WriteRequest as u8,
 }
 
 #[derive(Debug, Copy, Clone)]
 #[repr(u16)]
-pub(crate) enum ErrorCode {
+pub enum ErrorCode {
     Undefined = 0,
     FileNotFound = 1,
     AccessViolation = 2,

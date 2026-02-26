@@ -1,3 +1,5 @@
+//! Definition of the TFTP protocol state machine / message engine
+
 use crate::constants::BINARY_MODE;
 use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::RequestType;
@@ -145,13 +147,13 @@ impl<'a> Machine<'a> {
                 match opcode_match {
                     // Handle incoming write request (read).
                     OpCode::WriteRequest => {
-                        let (filename, mode) = self.parse_request(received)?;
+                        let filename = self.parse_request(received)?;
                         self.request_type = Some(RequestType::Read);
                         Ok(filename)
                     }
                     // Handle incoming read request (write).
                     OpCode::ReadRequest => {
-                        let (filename, mode) = self.parse_request(received)?;
+                        let filename= self.parse_request(received)?;
                         self.request_type = Some(RequestType::Write);
                         Ok(filename)
                     }
@@ -283,7 +285,7 @@ impl<'a> Machine<'a> {
     fn parse_request(
         &mut self,
         received: &mut [u8; MAX_PACKET_SIZE],
-    ) -> Result<(String, Mode), TftprsError> {
+    ) -> Result<String, TftprsError> {
         let mut cursor: usize = 2;
         let filename = self.parse_string(
             received,
@@ -298,7 +300,7 @@ impl<'a> Machine<'a> {
         } else {
             return Err(TftprsError::BadPacketReceived);
         }
-        Ok((filename, self.mode))
+        Ok(filename)
     }
 
     /// Verifies that the block specified in the incoming message is as expected.

@@ -1,6 +1,7 @@
+//! Serialization of messages
+
 use crate::constants::BINARY_MODE;
 use crate::constants::FIXED_REQUEST_BYTES;
-/// Serialization of messages
 use crate::constants::MAX_DATA_SIZE;
 use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::TEXT_MODE;
@@ -34,7 +35,7 @@ pub(crate) struct Request {
 }
 
 impl Request {
-    fn filename_fits(mode: Mode, filename: &String) -> bool {
+    fn filename_fits(mode: Mode, filename: &str) -> bool {
         let mode_size = match mode {
             Mode::Text => TEXT_MODE.len(),
             Mode::Binary => BINARY_MODE.len(),
@@ -166,7 +167,7 @@ impl Serial for Error {
         head += 2;
         buffer[head..].copy_from_slice(&(self.code as u16).to_be_bytes());
         head += 2;
-        buffer[head..].copy_from_slice(&self.message.as_bytes());
+        buffer[head..].copy_from_slice(self.message.as_bytes());
         head += self.message.len();
         head
     }
@@ -175,5 +176,7 @@ impl Serial for Error {
 mod test {
     use super::*;
     #[test]
-    fn test_request() {}
+    fn test_request() {
+
+    }
 }
