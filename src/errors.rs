@@ -8,8 +8,8 @@ pub enum TftprsError {
     BadPacketReceived,
     #[error("Connection or transaction is already active")]
     Busy,
-    #[error("Connection terminated")]
-    Terminated,
+    #[error("No connection")]
+    NoConnection,
     #[error("No file")]
     NoFile,
 }

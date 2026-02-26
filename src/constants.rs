@@ -36,16 +36,15 @@ pub(crate) const FIXED_REQUEST_BYTES: usize = 4;
 pub(crate) const FIXED_DATA_BYTES: usize = 4;
 pub(crate) const MAX_DATA_SIZE: usize = MAX_PACKET_SIZE - FIXED_DATA_BYTES;
 
-pub(crate) const DEFAULT_DESTINATION_TID: u16 = 69;
-
 /// The mode field contains the string "netascii", "octet", or "mail"
 /// (or any combination of upper and lower case, such as "NETASCII", NetAscii", etc.)
 /// in netascii indicating the three modes defined in the protocol.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub(crate) enum Mode {
     /// A host which receives netascii mode data must translate the data to its own format.
     Text,
     /// Octet mode is used to transfer a file that is in the 8-bit format of the machine from which the file is being transferred.
+    #[default]
     Binary,
 }
 

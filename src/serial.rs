@@ -1,6 +1,7 @@
 /// Serialization of messages
 
-use crate::constants::{MAX_DATA_SIZE, MAX_PACKET_SIZE};
+use crate::constants::MAX_DATA_SIZE;
+use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::TEXT_MODE;
 use crate::constants::BINARY_MODE;
 use crate::constants::FIXED_REQUEST_BYTES;
@@ -135,11 +136,17 @@ impl Serial for Ack {
 /// Most errors cause termination of the connection.
 /// An error is signalled by sending an error packet.
 #[derive(Debug, Clone)]
-struct Error {
+pub(crate) struct Error {
     // The error code is an integer indicating the nature of the error.
     code: ErrorCode,
     // The error message is intended for human consumption.
     message: String,
+}
+
+impl Error {
+    pub fn new(error_code: ErrorCode, message: String) -> Self {
+        Self { code: error_code, message }
+    }
 }
 
 impl Serial for Error {
