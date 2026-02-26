@@ -340,7 +340,7 @@ impl<'a> Machine<'a> {
         // Verify the header.
         self.check_block_on_message(received)?;
         // Advance the block for the next write.
-        self.block += 1;
+        self.block = self.block.wrapping_add(1);
         self.send_block(outgoing)
     }
 
@@ -372,7 +372,7 @@ impl<'a> Machine<'a> {
             self.request_type = None;
         } else {
             // Otherwise, advance for the next data packet.
-            self.block += 1;
+            self.block = self.block.wrapping_add(1);
         }
         // Acknowledge the received data.
         self.send_ack(outgoing)

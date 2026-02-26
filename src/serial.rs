@@ -173,6 +173,7 @@ fn write_bytes(buffer: &mut [u8; MAX_PACKET_SIZE], head: &mut usize, source: &[u
 }
 
 mod test {
+    #[cfg(test)]
     use super::*;
     #[test]
     fn test_read_request() {
@@ -203,7 +204,7 @@ mod test {
     }
 
     #[test]
-    fn test_one_gram_data() {
+    fn test_one_small_gram_data() {
         let my_datagram: Vec<u8> = vec![0x5a, 0xa5];
         let data = Data::new(1, &my_datagram);
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
@@ -211,6 +212,10 @@ mod test {
         let expected: [u8; 6] =
             [0x0, 0x3, 0x0, 0x1, 0x5a, 0xa5];
         assert_eq!(expected, tx_buffer[0..6]);
+
+        // cannot send a second one
+        let data = Data::new(2, &my_datagram);
+        assert!(data.is_none());
     }
 
     #[test]
@@ -249,4 +254,6 @@ mod test {
         let expected: [u8; 5] = [0x0, 0x3, 0x0, 0x2, 0xA5];
         assert_eq!(expected, tx_buffer[0..5]);
     }
+
+
 }
