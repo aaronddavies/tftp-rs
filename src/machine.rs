@@ -11,6 +11,8 @@ use crate::serial::{Ack, Error};
 use crate::serial::{Data, Request};
 use crate::serial::Serial;
 
+const TERMINATOR_BYTE: u8 = 0x0;
+
 
 /// This machine operates as the transfer engine for the protocol. It provides an interface for
 /// initiating transfers and for handling transfer requests.
@@ -197,6 +199,7 @@ impl<'a> Machine<'a> {
         }
     }
 
+    /// Formulate a request and write to the transmit buffer.
     fn send_request(&mut self, request_type: RequestType, filename: String, file: &'a mut Vec<u8>, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<usize, TftprsError> {
         if let Ok(request) = Request::new(request_type, self.mode, filename) {
             let count = request.serialize(outgoing);
@@ -212,16 +215,19 @@ impl<'a> Machine<'a> {
         }
     }
 
-    fn send_error(&mut self, code: ErrorCode, outgoing: &mut [u8; MAX_PACKET_SIZE], message: Option<String>) -> Result<usize, TftprsError> {
+    /// Formulate an error and write it to the transmit buffer. THe caller can do this at any time.
+    /// This oeration automatically resets the machine.
+    pub fn send_error(&mut self, code: ErrorCode, outgoing: &mut [u8; MAX_PACKET_SIZE], message: Option<String>) -> Result<usize, TftprsError> {
         let error_message = Error::new(code, message.unwrap_or_else(|| "Unknown error".to_string()));
         let count = error_message.serialize(outgoing);
         self.reset();
         Ok(count)
     }
 
+    /// Helper to parse a variable length string in a message.
     fn parse_string(&mut self, received: &mut [u8; MAX_PACKET_SIZE], cursor: &mut usize, cursor_limit: usize) -> Result<String, TftprsError> {
         let mut result = String::new();
-        while received[*cursor] != 0x0 {
+        while received[*cursor] != TERMINATOR_BYTE {
             result.push(char::from(received[*cursor]));
             *cursor += 1;
             if *cursor >= cursor_limit {
@@ -231,6 +237,7 @@ impl<'a> Machine<'a> {
         Ok(result)
     }
 
+    /// Helper to parse an incoming request from a peer.
     fn parse_request(&mut self, received: &mut [u8; MAX_PACKET_SIZE]) -> Result<(String, Mode), TftprsError> {
         let mut cursor: usize = 2;
         let filename = self.parse_string(received, &mut cursor, MAX_PACKET_SIZE - BINARY_MODE.len() - 2)?;
@@ -245,6 +252,7 @@ impl<'a> Machine<'a> {
         Ok((filename, self.mode))
     }
 
+    /// Verifies that the block specified in the incoming message is as expected.
     fn check_block(&self, received: &mut [u8; MAX_PACKET_SIZE]) -> Result<(), TftprsError> {
         if let Ok(block_bytes) = received[2..4].try_into() {
             let block = u16::from_be_bytes(block_bytes);
@@ -255,6 +263,7 @@ impl<'a> Machine<'a> {
         Ok(())
     }
 
+    /// Writes out the current block of the file.
     fn send_block(&mut self, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<usize, TftprsError> {
         let offset = self.block as usize * MAX_DATA_SIZE;
         if let Some(file) = &self.file {
