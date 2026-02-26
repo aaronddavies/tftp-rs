@@ -212,4 +212,41 @@ mod test {
             [0x0, 0x3, 0x0, 0x1, 0x5a, 0xa5];
         assert_eq!(expected, tx_buffer[0..6]);
     }
+
+    #[test]
+    fn test_largest_data() {
+        let my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE);
+        let data = Data::new(1, &my_datagram);
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        data.unwrap().serialize(&mut tx_buffer);
+        let mut expected: [u8; MAX_DATA_SIZE] = [0x5A; MAX_DATA_SIZE];
+        expected[0] = 0x0;
+        expected[1] = 0x3;
+        expected[2] = 0x0;
+        expected[3] = 0x1;
+        assert_eq!(expected, tx_buffer[0..MAX_DATA_SIZE]);
+    }
+
+    #[test]
+    fn test_largest_data_and_one() {
+        let mut my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE + 1);
+        my_datagram[MAX_DATA_SIZE] = 0xA5;
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+
+        // first datagram
+        let data = Data::new(1, &my_datagram);
+        data.unwrap().serialize(&mut tx_buffer);
+        let mut expected: [u8; MAX_DATA_SIZE] = [0x5A; MAX_DATA_SIZE];
+        expected[0] = 0x0;
+        expected[1] = 0x3;
+        expected[2] = 0x0;
+        expected[3] = 0x1;
+        assert_eq!(expected, tx_buffer[0..MAX_DATA_SIZE]);
+
+        // second datagram
+        let data = Data::new(2, &my_datagram);
+        data.unwrap().serialize(&mut tx_buffer);
+        let expected: [u8; 5] = [0x0, 0x3, 0x0, 0x2, 0xA5];
+        assert_eq!(expected, tx_buffer[0..5]);
+    }
 }
