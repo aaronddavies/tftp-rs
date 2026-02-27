@@ -25,10 +25,15 @@ const TERMINATOR_BYTE: u8 = 0x0;
 ///  * Provide a reference to the target file that lives as long as this machine does. In the case of mutable reference, it must be exclusively held by the machine.
 #[derive(Debug, Default)]
 pub struct Machine<'a> {
+    // The active request type. The machine is considered idle if this is None.
     request_type: Option<RequestType>,
+    // The mutable target file for a write request.
     incoming_file: Option<&'a mut Vec<u8>>,
+    // The immutable source file for a read request.
     outgoing_file: Option<&'a Vec<u8>>,
+    // The mode to be sent in a request, or captured from a request.
     mode: Mode,
+    // The current block to be sent in the next datagram, or to be acknowledged in an incoming request or datagram.
     block: u16,
 }
 
@@ -168,7 +173,7 @@ impl<'a> Machine<'a> {
         result
     }
 
-    /// Listens for (i.e., parses an incoming message) to check for a request from a remote peer.
+    /// Listens for (i.e., parses an incoming spontaneous message) to check for a request from a remote peer.
     pub fn listen_for_request(
         &mut self,
         received: &[u8; MAX_PACKET_SIZE],
