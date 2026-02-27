@@ -384,8 +384,10 @@ impl<'a> Machine<'a> {
             // If there is no more data coming, then terminate.
             self.reset();
         }
-        // Acknowledge the received data.
-        self.send_ack(outgoing)
+        // Acknowledge the received data and advance the block.
+        let response = self.send_ack(outgoing);
+        self.block += 1;
+        response
     }
 }
 
@@ -414,27 +416,53 @@ mod tests {
 
     #[test]
     fn test_read_request() {
-        let mut machine = Machine::new();
+        let mut count = 0;
+        // For incoming file
         let mut my_file: Vec<u8> = Vec::new();
+        // For sendimg outgoing messages to server
         let mut tx = [0u8; MAX_PACKET_SIZE];
+        // For capturing incoming messages from server
         let mut rx = [0u8; MAX_PACKET_SIZE];
-        // Send request
-        let count = machine.request_receive_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("receive file");
-        assert_eq!(count, 14);
-        assert_eq!(tx[1], OpCode::ReadRequest as u8);
-        // Process first block
-        let incoming_data = [0x5A; 1024].to_vec();
-        let data = Data::new(1, &incoming_data);
-        data.unwrap().serialize(&mut rx);
-        let count = machine.process(&rx, MAX_PACKET_SIZE, &mut tx).unwrap();
+
+        // Throw away the machine when the transaction is done so that we can inspect the file
+        {
+            let mut machine = Machine::new();
+            // Send request
+            count = machine.request_receive_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("receive file");
+            assert_eq!(count, 14);
+            assert_eq!(tx[1], OpCode::ReadRequest as u8);
+
+            // Server's first block message
+            let mut incoming_data = [0x5A; 1024].to_vec();
+            // Disambiguate the two blocks
+            incoming_data[MAX_DATA_SIZE] = 0xA5;
+
+            // Process first block
+            let data = Data::new(1, &incoming_data);
+            data.unwrap().serialize(&mut rx);
+            let count = machine.process(&rx, MAX_PACKET_SIZE, &mut tx).unwrap();
+
+            // Send ack
+            assert_eq!(count, 4);
+            assert_eq!(tx[1], OpCode::Acknowledgement as u8);
+            assert_eq!(tx[3], 1);
+
+            // Process second block
+            let data = Data::new(2, &incoming_data);
+            data.unwrap().serialize(&mut rx);
+            let count = machine.process(&rx, MAX_PACKET_SIZE, &mut tx).unwrap();
+
+            // Send ack
+            assert_eq!(count, 4);
+            assert_eq!(tx[1], OpCode::Acknowledgement as u8);
+            assert_eq!(tx[3], 2);
+        }
+
         // Verify data written
-        assert_eq!(my_file[0], 0x5A);
-        assert_eq!(my_file[MAX_DATA_SIZE - 1], 0x5A);
-        assert_eq!(my_file.len(), MAX_DATA_SIZE);
-        // Verify ack
-        assert_eq!(count, 4);
-        assert_eq!(tx[1], OpCode::Acknowledgement as u8);
-        assert_eq!(tx[3], 1);
+        assert_eq!(my_file.get(0).unwrap(), &0x5A);
+        assert_eq!(my_file.get(MAX_DATA_SIZE - 1).unwrap(), &0x5A);
+        assert_eq!(my_file.get(MAX_DATA_SIZE).unwrap(), &0xA5);
+        assert_eq!(my_file.len(), MAX_DATA_SIZE * 2);
     }
 
 }
