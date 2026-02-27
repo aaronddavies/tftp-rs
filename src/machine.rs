@@ -173,7 +173,7 @@ impl<'a> Machine<'a> {
     /// whether it was the caller or the remote peer.
     pub fn process(
         &mut self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
         length: usize,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
@@ -310,7 +310,7 @@ impl<'a> Machine<'a> {
     /// Verifies that the block specified in the incoming message is as expected.
     fn check_block_on_message(
         &self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
     ) -> Result<(), TftprsError> {
         if let Ok(block_bytes) = received[2..4].try_into() {
             let block = u16::from_be_bytes(block_bytes);
@@ -339,7 +339,7 @@ impl<'a> Machine<'a> {
     /// Checks the last ack, and then sends the next block.
     fn handle_ack_and_send_next_block(
         &mut self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
         // Verify the header.
@@ -365,7 +365,7 @@ impl<'a> Machine<'a> {
     /// Receives the last datagram, and then sends an ack.
     fn handle_data_and_send_ack(
         &mut self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
         length: usize,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
@@ -385,4 +385,24 @@ impl<'a> Machine<'a> {
         // Acknowledge the received data.
         self.send_ack(outgoing)
     }
+}
+
+mod tests {
+    #[cfg(test)]
+    use super::*;
+
+    #[test]
+    fn test_write_request() {
+        let mut machine = Machine::new();
+        let mut my_file: Vec<u8> = [0x5A; 1024].to_vec();
+        let mut tx = [0u8; MAX_PACKET_SIZE];
+        let mut rx = [0u8; MAX_PACKET_SIZE];
+        let count =machine.request_send_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("send file");
+        assert_eq!(count, 14);
+        let ack = Ack::new(0);
+        let count = ack.serialize(&mut rx);
+        let count = machine.process(&rx, count, &mut tx).unwrap();
+        assert_eq!(count, MAX_PACKET_SIZE);
+    }
+
 }
