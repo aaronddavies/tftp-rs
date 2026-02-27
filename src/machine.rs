@@ -28,7 +28,8 @@ const TERMINATOR_BYTE: u8 = 0x0;
 #[derive(Debug, Default)]
 pub struct Machine<'a> {
     request_type: Option<RequestType>,
-    file: Option<&'a mut Vec<u8>>,
+    incoming_file: Option<&'a mut Vec<u8>>,
+    outgoing_file: Option<&'a Vec<u8>>,
     mode: Mode,
     block: u16,
 }
@@ -43,7 +44,8 @@ impl<'a> Machine<'a> {
     /// Resets the machine to an idle state.
     pub fn reset(&mut self) {
         self.request_type = None;
-        self.file = None;
+        self.incoming_file = None;
+        self.outgoing_file = None;
         self.block = 0;
     }
 
@@ -78,14 +80,31 @@ impl<'a> Machine<'a> {
     pub fn request_send_file(
         &mut self,
         filename: String,
-        file: &'a mut Vec<u8>,
+        file: &'a Vec<u8>,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
+        // Do not send a request if a transaction is already taking place.
         if self.is_busy() {
             return Err(TftprsError::Busy);
         }
+        // Do not allow files that are too large for the block field.
+        if file.len() > u16::MAX as usize * MAX_DATA_SIZE {
+            return Err(TftprsError::BadRequestAttempted);
+        }
+        // Expect an ack at block 0
         self.block = 0;
-        self.send_request(RequestType::Write, filename, file, outgoing)
+        if let Ok(request) = Request::new(RequestType::Write, self.mode, filename) {
+            let count = request.serialize(outgoing);
+            if request.serialize(outgoing) > 0 {
+                self.outgoing_file = Some(file);
+                self.request_type = Some(RequestType::Write);
+                Ok(count)
+            } else {
+                Err(TftprsError::BadRequestAttempted)
+            }
+        } else {
+            Err(TftprsError::BadRequestAttempted)
+        }
     }
 
     /// Sends a request to the remote peer to receive / read a file from that peer.
@@ -95,24 +114,41 @@ impl<'a> Machine<'a> {
         file: &'a mut Vec<u8>,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
+        // Do not send a request if a transaction is already taking place.
         if self.is_busy() {
             return Err(TftprsError::Busy);
         }
+        // Do not allow files that are too large for the block field.
+        if file.len() > u16::MAX as usize * MAX_DATA_SIZE {
+            return Err(TftprsError::BadRequestAttempted);
+        }
+        // Expect first block of data in response
         self.block = 1;
-        self.send_request(RequestType::Read, filename, file, outgoing)
+        if let Ok(request) = Request::new(RequestType::Read, self.mode, filename) {
+            let count = request.serialize(outgoing);
+            if request.serialize(outgoing) > 0 {
+                self.incoming_file = Some(file);
+                self.request_type = Some(RequestType::Read);
+                Ok(count)
+            } else {
+                Err(TftprsError::BadRequestAttempted)
+            }
+        } else {
+            Err(TftprsError::BadRequestAttempted)
+        }
     }
 
     /// Responds to a request from a remote peer to read / receive a file from the caller. This is
     /// a write request from the caller's perspective.
     pub fn reply_send_file(
         &mut self,
-        file: &'a mut Vec<u8>,
+        file: &'a Vec<u8>,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
         if !self.is_busy() {
             return Err(TftprsError::NoConnection);
         }
-        self.file = Some(file);
+        self.outgoing_file = Some(file);
         self.block = 1;
         self.send_block(outgoing)
     }
@@ -127,15 +163,15 @@ impl<'a> Machine<'a> {
         if !self.is_busy() {
             return Err(TftprsError::NoConnection);
         }
-        self.file = Some(file);
+        self.incoming_file = Some(file);
         self.block = 0;
         self.send_ack(outgoing)
     }
 
-    /// Listens (i.e., parses an incoming message) to check for a request from a remote peer.
+    /// Listens for (i.e., parses an incoming message) to check for a request from a remote peer.
     pub fn listen_for_request(
         &mut self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
     ) -> Result<String, TftprsError> {
         if self.is_busy() {
             return Err(TftprsError::Busy);
@@ -226,32 +262,6 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Formulate a request and write to the transmit buffer.
-    fn send_request(
-        &mut self,
-        request_type: RequestType,
-        filename: String,
-        file: &'a mut Vec<u8>,
-        outgoing: &mut [u8; MAX_PACKET_SIZE],
-    ) -> Result<usize, TftprsError> {
-        // Do not allow files that are too large for the block field.
-        if file.len() > u16::MAX as usize * MAX_DATA_SIZE {
-            return Err(TftprsError::BadRequestAttempted);
-        }
-        if let Ok(request) = Request::new(request_type, self.mode, filename) {
-            let count = request.serialize(outgoing);
-            if request.serialize(outgoing) > 0 {
-                self.file = Some(file);
-                self.request_type = Some(request_type);
-                Ok(count)
-            } else {
-                Err(TftprsError::BadRequestAttempted)
-            }
-        } else {
-            Err(TftprsError::BadRequestAttempted)
-        }
-    }
-
     /// Formulate an error and write it to the transmit buffer. THe caller can do this at any time.
     /// This oeration automatically resets the machine.
     pub fn send_error(
@@ -270,7 +280,7 @@ impl<'a> Machine<'a> {
     /// Helper to parse a variable length string in a message.
     fn parse_string(
         &mut self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
         cursor: &mut usize,
         cursor_limit: usize,
     ) -> Result<String, TftprsError> {
@@ -288,7 +298,7 @@ impl<'a> Machine<'a> {
     /// Helper to parse an incoming request from a peer.
     fn parse_request(
         &mut self,
-        received: &mut [u8; MAX_PACKET_SIZE],
+        received: &[u8; MAX_PACKET_SIZE],
     ) -> Result<String, TftprsError> {
         let mut cursor: usize = 2;
         let filename = self.parse_string(
@@ -323,7 +333,7 @@ impl<'a> Machine<'a> {
 
     /// Writes out the current block of the file.
     fn send_block(&mut self, outgoing: &mut [u8; MAX_PACKET_SIZE]) -> Result<usize, TftprsError> {
-        if let Some(file) = &self.file {
+        if let Some(file) = &self.outgoing_file {
             if let Some(data) = Data::new(self.block, file) {
                 let count = data.serialize(outgoing);
                 Ok(count)
@@ -371,7 +381,7 @@ impl<'a> Machine<'a> {
     ) -> Result<usize, TftprsError> {
         // Verify the header.
         self.check_block_on_message(received)?;
-        if let Some(file) = &mut self.file {
+        if let Some(file) = &mut self.incoming_file {
             // Write the received data.
             for i in 0 .. length {
                 let idx = FIXED_DATA_BYTES + i;
@@ -465,4 +475,24 @@ mod tests {
         assert_eq!(my_file.len(), MAX_DATA_SIZE * 2);
     }
 
+    #[test]
+    fn test_listen_for_read_request() {
+        let mut count = 0;
+        // For outgoing file
+        let my_file: Vec<u8> = Vec::new();
+        // For outgoing messages to server
+        let mut tx = [0u8; MAX_PACKET_SIZE];
+        // For capturing incoming messages from server
+        let mut rx = [0u8; MAX_PACKET_SIZE];
+
+        {
+            let mut machine = Machine::new();
+            // Send request
+            let request = Request::new(RequestType::Read, Mode::Binary, String::from("ABCDE"));
+            request.unwrap().serialize(&mut rx);
+            let filename = machine.listen_for_request(&rx).unwrap();
+            assert_eq!(filename, String::from("ABCDE"));
+            let count = machine.reply_send_file(&my_file, &mut tx);
+        }
+    }
 }
