@@ -11,7 +11,7 @@
 //! the host or the remote peer initiated the transfer.
 //!
 
-pub(crate) mod constants;
+pub mod constants;
 pub mod errors;
 pub mod machine;
 pub(crate) mod serial;
@@ -19,6 +19,7 @@ pub(crate) mod serial;
 mod tests {
     #[cfg(test)]
     use crate::constants::*;
+    #[cfg(test)]
     use crate::errors::TftprsError;
     #[cfg(test)]
     use crate::machine::*;
