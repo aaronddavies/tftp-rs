@@ -67,3 +67,21 @@ pub enum ErrorCode {
     FileAlreadyExists = 6,
     NoSuchUser = 7,
 }
+
+impl TryFrom<u16> for ErrorCode {
+    type Error = TftprsError;
+
+    fn try_from(value: u16) -> Result<Self, TftprsError> {
+        match value {
+            1 => Ok(ErrorCode::FileNotFound),
+            2 => Ok(ErrorCode::AccessViolation),
+            3 => Ok(ErrorCode::DiskFull),
+            4 => Ok(ErrorCode::IllegalOperation),
+            5 => Ok(ErrorCode::UnknownTransferId),
+            6 => Ok(ErrorCode::FileAlreadyExists),
+            7 => Ok(ErrorCode::NoSuchUser),
+            _ => Ok(ErrorCode::Undefined),
+        }
+    }
+}
+

@@ -9,7 +9,7 @@ use crate::constants::{ErrorCode, FIXED_DATA_BYTES, MAX_DATA_SIZE, Mode, OpCode}
 use crate::errors::TftprsError;
 
 use crate::serial::Serial;
-use crate::serial::{Ack, Error};
+use crate::serial::{Ack, ErrorResponse};
 use crate::serial::{Data, Request};
 
 const TERMINATOR_BYTE: u8 = 0x0;
@@ -164,8 +164,10 @@ impl<'a> Machine<'a> {
             return Err(TftprsError::NoConnection);
         }
         self.incoming_file = Some(file);
-        self.block = 0;
-        self.send_ack(outgoing)
+        // Acknowledge with a zero block, then advance the block.
+        let result = self.send_ack(outgoing);
+        self.block = 1;
+        result
     }
 
     /// Listens for (i.e., parses an incoming message) to check for a request from a remote peer.
@@ -219,7 +221,7 @@ impl<'a> Machine<'a> {
         }
         // Sanity check.
         if length > MAX_PACKET_SIZE {
-            return self.send_error(ErrorCode::IllegalOperation, outgoing, None);
+            return Err(TftprsError::BadPacketReceived);
         }
         if let Ok(opcode_bytes) = received[0..2].try_into() {
             // Determine dispatch based on op code.
@@ -249,13 +251,13 @@ impl<'a> Machine<'a> {
                     // Terminate on error.
                     OpCode::Error => {
                         self.reset();
-                        Ok(0)
+                        Err(Self::parse_error(received))
                     }
                     // This was an attempt to send us a request when we already busy.
                     _ => Err(TftprsError::Busy),
                 }
             } else {
-                self.send_error(ErrorCode::IllegalOperation, outgoing, None)
+                Err(TftprsError::BadPacketReceived)
             }
         } else {
             Err(TftprsError::BadPacketReceived)
@@ -268,10 +270,10 @@ impl<'a> Machine<'a> {
         &mut self,
         code: ErrorCode,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
-        message: Option<String>,
+        message: String,
     ) -> Result<usize, TftprsError> {
         let error_message =
-            Error::new(code, message.unwrap_or_else(|| "Unknown error".to_string()));
+            ErrorResponse::new(code, message);
         let count = error_message.serialize(outgoing);
         self.reset();
         Ok(count)
@@ -279,7 +281,6 @@ impl<'a> Machine<'a> {
 
     /// Helper to parse a variable length string in a message.
     fn parse_string(
-        &mut self,
         received: &[u8; MAX_PACKET_SIZE],
         cursor: &mut usize,
         cursor_limit: usize,
@@ -303,12 +304,12 @@ impl<'a> Machine<'a> {
         received: &[u8; MAX_PACKET_SIZE],
     ) -> Result<String, TftprsError> {
         let mut cursor: usize = 2;
-        let filename = self.parse_string(
+        let filename = Self::parse_string(
             received,
             &mut cursor,
             MAX_PACKET_SIZE - BINARY_MODE.len() - 2,
         )?;
-        let mode = self.parse_string(received, &mut cursor, MAX_PACKET_SIZE - 1)?;
+        let mode = Self::parse_string(received, &mut cursor, MAX_PACKET_SIZE - 1)?;
         if mode.eq(TEXT_MODE) {
             self.mode = Mode::Text;
         } else if mode.eq(BINARY_MODE) {
@@ -317,6 +318,24 @@ impl<'a> Machine<'a> {
             return Err(TftprsError::BadPacketReceived);
         }
         Ok(filename)
+    }
+
+    /// Helper to parse an error message from a peer.
+    fn parse_error(
+        received: &[u8; MAX_PACKET_SIZE],
+    ) -> TftprsError {
+        let mut cursor: usize = 2;
+        if let Ok(error_code_bytes) = received[cursor..cursor + 2].try_into() {
+            let Ok(error_code) = u16::from_be_bytes(error_code_bytes).try_into();
+            cursor += 2;
+            if let Ok(message) = Self::parse_string(received, &mut cursor, MAX_PACKET_SIZE - 1) {
+                TftprsError::ErrorResponse(error_code, message)
+            } else {
+                TftprsError::BadPacketReceived
+            }
+        } else {
+            TftprsError::BadPacketReceived
+        }
     }
 
     /// Verifies that the block specified in the incoming message is as expected.
@@ -392,13 +411,15 @@ impl<'a> Machine<'a> {
         } else {
             return Err(TftprsError::NoFile);
         }
+        // Acknowledge the received data.
+        let response = self.send_ack(outgoing);
         if length < MAX_DATA_SIZE || self.block == u16::MAX {
             // If there is no more data coming, then terminate.
             self.reset();
+        } else {
+            // Otherwise, advance the block.
+            self.block += 1;
         }
-        // Acknowledge the received data and advance the block.
-        let response = self.send_ack(outgoing);
-        self.block += 1;
         response
     }
 }

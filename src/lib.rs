@@ -8,6 +8,7 @@ mod tests {
     use crate::machine::*;
     #[cfg(test)]
     use crate::constants::*;
+    use crate::errors::TftprsError;
     #[cfg(test)]
     use crate::serial::*;
 
@@ -58,8 +59,9 @@ mod tests {
 
             // Process first block
             let data = Data::new(1, &incoming_data);
-            data.unwrap().serialize(&mut rx);
-            let count = machine.process(&rx, MAX_PACKET_SIZE, &mut tx).unwrap();
+            let message_size = data.unwrap().serialize(&mut rx);
+            assert_eq!(message_size, MAX_PACKET_SIZE);
+            let count = machine.process(&rx, message_size, &mut tx).unwrap();
 
             // Send ack
             assert_eq!(count, 4);
@@ -68,7 +70,8 @@ mod tests {
 
             // Process second block
             let data = Data::new(2, &incoming_data);
-            data.unwrap().serialize(&mut rx);
+            let message_size = data.unwrap().serialize(&mut rx);
+            assert_eq!(message_size, MAX_PACKET_SIZE);
             let count = machine.process(&rx, MAX_PACKET_SIZE, &mut tx).unwrap();
 
             // Send ack
@@ -87,7 +90,7 @@ mod tests {
     #[test]
     fn test_listen_for_read_request() {
         // For outgoing file
-        let my_file: Vec<u8> = Vec::new();
+        let my_file: Vec<u8> = [0x5A; 1024].to_vec();
         // For outgoing messages to server
         let mut tx = [0u8; MAX_PACKET_SIZE];
         // For capturing incoming messages from server
@@ -103,7 +106,88 @@ mod tests {
             assert!(machine.is_busy());
             assert_eq!(machine.mode(), Mode::Binary);
             assert_eq!(filename, String::from("ABCDE"));
-            let count = machine.reply_send_file(&my_file, &mut tx);
+            let count = machine.reply_send_file(&my_file, &mut tx).unwrap();
+            // Send out next packet
+            assert_eq!(count, MAX_PACKET_SIZE);
+            assert_eq!(tx[1], OpCode::Data as u8);
+            assert_eq!(tx[3], 1);
+            // Process ack
+            let ack = Ack::new(1);
+            let count = ack.serialize(&mut rx);
+            let count = machine.process(&rx, count, &mut tx).unwrap();
+            // Send out next packet
+            assert_eq!(count, MAX_PACKET_SIZE);
+            assert_eq!(tx[1], OpCode::Data as u8);
+            assert_eq!(tx[3], 2);
         }
+    }
+
+    #[test]
+    fn test_listen_for_write_request() {
+        // For incoming file
+        let mut my_file: Vec<u8> = Vec::new();
+        // For outgoing messages to server
+        let mut tx = [0u8; MAX_PACKET_SIZE];
+        // For capturing incoming messages from server
+        let mut rx = [0u8; MAX_PACKET_SIZE];
+
+        {
+            let mut machine = Machine::new();
+            let request = Request::new(RequestType::Write, Mode::Text, String::from("ABCDE"));
+            request.unwrap().serialize(&mut rx);
+            let filename = machine.listen_for_request(&rx).unwrap();
+            assert_eq!(machine.request_type().unwrap(), RequestType::Read);
+            assert!(machine.is_busy());
+            assert_eq!(machine.mode(), Mode::Text);
+            assert_eq!(filename, String::from("ABCDE"));
+            let count = machine.reply_receive_file(&mut my_file, &mut tx).unwrap();
+
+            // Send out ack
+            assert_eq!(count, 4);
+            assert_eq!(tx[1], OpCode::Acknowledgement as u8);
+            assert_eq!(tx[3], 0);
+
+            // Process first block
+            let incoming_data = String::from("Hello, world!").to_string().into_bytes();
+            let data = Data::new(1, &incoming_data);
+            let message_size = data.unwrap().serialize(&mut rx);
+            let count = machine.process(&rx, message_size, &mut tx).unwrap();
+
+            // Send out ack
+            assert_eq!(count, 4);
+            assert_eq!(tx[1], OpCode::Acknowledgement as u8);
+            assert_eq!(tx[3], 1);
+
+            // File is complete
+            assert!(!machine.is_busy());
+            assert_eq!(machine.request_type(), None);
+        }
+        assert_eq!(String::from_utf8(my_file).unwrap(), String::from("Hello, world!"));
+    }
+
+    #[test]
+    fn test_receive_error_response_on_write_request() {
+        let mut machine = Machine::new();
+        assert!(!machine.is_busy());
+        let mut my_file: Vec<u8> = [0x5A; 1024].to_vec();
+        let mut tx = [0u8; MAX_PACKET_SIZE];
+        let mut rx = [0u8; MAX_PACKET_SIZE];
+        // Send request
+        let _ =machine.request_send_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("send file");
+        assert!(machine.is_busy());
+        // Process error
+        let error_received = ErrorResponse::new(ErrorCode::FileNotFound, String::from("File not found"));
+        let count = error_received.serialize(&mut rx);
+        let e = machine.process(&rx, count, &mut tx).err().unwrap();
+        match e {
+            TftprsError::ErrorResponse(code, message) => {
+                assert_eq!(code, ErrorCode::FileNotFound as u16);
+                assert_eq!(message, String::from("File not found"));
+            }
+            _ => {
+                panic!("Unexpected error: {:?}", e);
+            }
+        }
+        assert!(!machine.is_busy());
     }
 }

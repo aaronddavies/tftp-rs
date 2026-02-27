@@ -144,14 +144,14 @@ impl Serial for Ack {
 /// Most errors cause termination of the connection.
 /// An error is signalled by sending an error packet.
 #[derive(Debug, Clone)]
-pub(crate) struct Error {
+pub(crate) struct ErrorResponse {
     // The error code is an integer indicating the nature of the error.
     code: ErrorCode,
     // The error message is intended for human consumption.
     message: String,
 }
 
-impl Error {
+impl ErrorResponse {
     pub fn new(error_code: ErrorCode, message: String) -> Self {
         Self {
             code: error_code,
@@ -160,7 +160,7 @@ impl Error {
     }
 }
 
-impl Serial for Error {
+impl Serial for ErrorResponse {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
         write_bytes(buffer, &mut head, &(OpCode::Error as u16).to_be_bytes());
@@ -293,7 +293,7 @@ mod test {
 
     #[test]
     fn test_error() {
-        let my_error = Error::new(ErrorCode::DiskFull, String::from("WRONG"));
+        let my_error = ErrorResponse::new(ErrorCode::DiskFull, String::from("WRONG"));
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         my_error.serialize(&mut tx_buffer);
         let expected: [u8; 10] = [0x0, 0x5, 0x0, 0x3, 0x57, 0x52, 0x4F, 0x4E, 0x47, 0x0];

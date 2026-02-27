@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum TftprsError {
     #[error("Request is badly formed")]
     BadRequestAttempted,
@@ -12,4 +12,6 @@ pub enum TftprsError {
     NoConnection,
     #[error("No file")]
     NoFile,
+    #[error("Error {0} received: {1}")]
+    ErrorResponse(u16, String),
 }
