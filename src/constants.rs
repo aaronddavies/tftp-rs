@@ -39,7 +39,7 @@ pub(crate) const MAX_DATA_SIZE: usize = MAX_PACKET_SIZE - FIXED_DATA_BYTES;
 /// The mode field contains the string "netascii", "octet", or "mail"
 /// (or any combination of upper and lower case, such as "NETASCII", NetAscii", etc.)
 /// in netascii indicating the three modes defined in the protocol.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub enum Mode {
     /// A host which receives netascii mode data must translate the data to its own format.
     Text,
@@ -48,14 +48,14 @@ pub enum Mode {
     Binary,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RequestType {
     Read = OpCode::ReadRequest as u8,
     Write = OpCode::WriteRequest as u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u16)]
 pub enum ErrorCode {
     Undefined = 0,
