@@ -56,6 +56,10 @@ pub enum TransferType {
     Write = OpCode::WriteRequest as u8,
 }
 
+///The error code is an integer indicating the nature of the error.  A
+///    table of values and meanings is given in the appendix.  (Note that
+///    several error codes have been added to this version of this
+///    document.)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u16)]
 pub enum ErrorCode {

@@ -68,7 +68,7 @@ impl<'a> Machine<'a> {
 
     /// Informs the host what kind of transfer, from the perspective of the host, is being performed.
     /// For example, if the host initiates a write request, the transfer type will indicate write. If the remote peer
-    /// initiates a write request, this will be considered a write transfer type. If the host receives a request,
+    /// initiates a write request, this will be considered a read transfer type. If the host receives a request,
     /// it should check the transfer type to determine whether to send a file or receive a file in reply.
     pub fn transfer_type(&self) -> Option<TransferType> {
         self.transfer_type
