@@ -323,7 +323,7 @@ impl<'a> Machine<'a> {
     fn parse_error(received: &[u8; MAX_PACKET_SIZE]) -> TftprsError {
         let mut cursor: usize = 2;
         if let Ok(error_code_bytes) = received[cursor..cursor + 2].try_into() {
-            let Ok(error_code) = u16::from_be_bytes(error_code_bytes).try_into();
+            let error_code = u16::from_be_bytes(error_code_bytes);
             cursor += 2;
             if let Ok(message) = Self::parse_string(received, &mut cursor, MAX_PACKET_SIZE - 1) {
                 TftprsError::ErrorResponse(error_code, message)
