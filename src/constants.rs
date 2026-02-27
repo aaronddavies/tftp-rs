@@ -48,9 +48,10 @@ pub enum Mode {
     Binary,
 }
 
+/// The local interpretation, from the perspective of the host, of the currently active transfer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-pub enum RequestType {
+pub enum TransferType {
     Read = OpCode::ReadRequest as u8,
     Write = OpCode::WriteRequest as u8,
 }

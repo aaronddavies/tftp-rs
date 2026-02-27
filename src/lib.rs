@@ -39,7 +39,7 @@ mod tests {
             .expect("send file");
         assert_eq!(count, 14);
         assert_eq!(tx[1], OpCode::WriteRequest as u8);
-        assert_eq!(machine.request_type().unwrap(), RequestType::Write);
+        assert_eq!(machine.transfer_type().unwrap(), TransferType::Write);
         assert!(machine.is_busy());
         assert_eq!(machine.mode(), Mode::Binary);
         // Process ack
@@ -117,10 +117,10 @@ mod tests {
         {
             let mut machine = Machine::new();
             // Send request
-            let request = Request::new(RequestType::Read, Mode::Binary, String::from("ABCDE"));
+            let request = Request::new(TransferType::Read, Mode::Binary, String::from("ABCDE"));
             request.unwrap().serialize(&mut rx);
             let filename = machine.listen_for_request(&rx).unwrap();
-            assert_eq!(machine.request_type().unwrap(), RequestType::Write);
+            assert_eq!(machine.transfer_type().unwrap(), TransferType::Write);
             assert!(machine.is_busy());
             assert_eq!(machine.mode(), Mode::Binary);
             assert_eq!(filename, String::from("ABCDE"));
@@ -151,10 +151,10 @@ mod tests {
 
         {
             let mut machine = Machine::new();
-            let request = Request::new(RequestType::Write, Mode::Text, String::from("ABCDE"));
+            let request = Request::new(TransferType::Write, Mode::Text, String::from("ABCDE"));
             request.unwrap().serialize(&mut rx);
             let filename = machine.listen_for_request(&rx).unwrap();
-            assert_eq!(machine.request_type().unwrap(), RequestType::Read);
+            assert_eq!(machine.transfer_type().unwrap(), TransferType::Read);
             assert!(machine.is_busy());
             assert_eq!(machine.mode(), Mode::Text);
             assert_eq!(filename, String::from("ABCDE"));
@@ -178,7 +178,7 @@ mod tests {
 
             // File is complete
             assert!(!machine.is_busy());
-            assert_eq!(machine.request_type(), None);
+            assert_eq!(machine.transfer_type(), None);
         }
         assert_eq!(
             String::from_utf8(my_file).unwrap(),
@@ -222,7 +222,7 @@ mod tests {
 
         let mut machine = Machine::new();
         // Send request
-        let request = Request::new(RequestType::Read, Mode::Binary, String::from("ABCDE"));
+        let request = Request::new(TransferType::Read, Mode::Binary, String::from("ABCDE"));
         request.unwrap().serialize(&mut rx);
         let _ = machine.listen_for_request(&rx);
 
@@ -235,6 +235,6 @@ mod tests {
             )
             .unwrap();
         assert!(!machine.is_busy());
-        assert_eq!(machine.request_type(), None);
+        assert_eq!(machine.transfer_type(), None);
     }
 }

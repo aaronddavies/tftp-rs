@@ -2,8 +2,8 @@
 
 use crate::constants::BINARY_MODE;
 use crate::constants::MAX_PACKET_SIZE;
-use crate::constants::RequestType;
 use crate::constants::TEXT_MODE;
+use crate::constants::TransferType;
 use crate::constants::{ErrorCode, FIXED_DATA_BYTES, MAX_DATA_SIZE, Mode, OpCode};
 
 use crate::errors::TftprsError;
@@ -25,8 +25,8 @@ const TERMINATOR_BYTE: u8 = 0x0;
 ///  * Provide a reference to the target file that lives as long as this machine does. In the case of mutable reference, it must be exclusively held by the machine.
 #[derive(Debug, Default)]
 pub struct Machine<'a> {
-    // The active request type. The machine is considered idle if this is None.
-    request_type: Option<RequestType>,
+    // The active transfer type. The machine is considered idle if this is None.
+    transfer_type: Option<TransferType>,
     // The mutable target file for a write request.
     incoming_file: Option<&'a mut Vec<u8>>,
     // The immutable source file for a read request.
@@ -46,7 +46,7 @@ impl<'a> Machine<'a> {
 
     /// Resets the machine to an idle state.
     pub fn reset(&mut self) {
-        self.request_type = None;
+        self.transfer_type = None;
         self.incoming_file = None;
         self.outgoing_file = None;
         self.block = 0;
@@ -63,15 +63,15 @@ impl<'a> Machine<'a> {
 
     /// Indicates whether a transfer is being performed.
     pub fn is_busy(&self) -> bool {
-        self.request_type.is_some()
+        self.transfer_type.is_some()
     }
 
-    /// Informs the host what kind of request, from the perspective of the host, is being performed.
-    /// For example, if the host initiates a write request, this type will reflect it. If the remote peer
-    /// initiates a write request, this will be reflected as a read request. If the host receives a request,
-    /// it should check this type to determine whether to send a file or receive a file in reply.
-    pub fn request_type(&self) -> Option<RequestType> {
-        self.request_type
+    /// Informs the host what kind of transfer, from the perspective of the host, is being performed.
+    /// For example, if the host initiates a write request, the transfer type will indicate write. If the remote peer
+    /// initiates a write request, this will be considered a write transfer type. If the host receives a request,
+    /// it should check the transfer type to determine whether to send a file or receive a file in reply.
+    pub fn transfer_type(&self) -> Option<TransferType> {
+        self.transfer_type
     }
 
     /// Indicates what format of file is being transferred. The default is binary.
@@ -96,11 +96,11 @@ impl<'a> Machine<'a> {
         }
         // Expect an ack at block 0
         self.block = 0;
-        if let Ok(request) = Request::new(RequestType::Write, self.mode, filename) {
+        if let Ok(request) = Request::new(TransferType::Write, self.mode, filename) {
             let count = request.serialize(outgoing);
             if request.serialize(outgoing) > 0 {
                 self.outgoing_file = Some(file);
-                self.request_type = Some(RequestType::Write);
+                self.transfer_type = Some(TransferType::Write);
                 Ok(count)
             } else {
                 Err(TftprsError::BadRequestAttempted)
@@ -127,11 +127,11 @@ impl<'a> Machine<'a> {
         }
         // Expect first block of data in response
         self.block = 1;
-        if let Ok(request) = Request::new(RequestType::Read, self.mode, filename) {
+        if let Ok(request) = Request::new(TransferType::Read, self.mode, filename) {
             let count = request.serialize(outgoing);
             if request.serialize(outgoing) > 0 {
                 self.incoming_file = Some(file);
-                self.request_type = Some(RequestType::Read);
+                self.transfer_type = Some(TransferType::Read);
                 Ok(count)
             } else {
                 Err(TftprsError::BadRequestAttempted)
@@ -142,7 +142,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Responds to a request from a remote peer to read / receive a file from the host. This is
-    /// a write request from the host's perspective.
+    /// a write transfer from the host's perspective.
     pub fn reply_send_file(
         &mut self,
         file: &'a Vec<u8>,
@@ -157,7 +157,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Responds to a request from a remote peer to write / send a file to the host. This is a
-    /// read request from the host's perspective.
+    /// read transfer from the host's perspective.
     pub fn reply_receive_file(
         &mut self,
         file: &'a mut Vec<u8>,
@@ -174,6 +174,9 @@ impl<'a> Machine<'a> {
     }
 
     /// Listens for (i.e., parses an incoming spontaneous message) to check for a request from a remote peer.
+    /// To determine the direction of the request, check `request_type()`. If the remote peer sent
+    /// a `OpCode::WriteRequest` request, this will be referenced as a `TransferType::Read` in the host's machine.
+    /// Likewise, if the peer sent an `OpCode::ReadRequest`, then the host considers it an active `TransferType::Write`.
     pub fn listen_for_request(
         &mut self,
         received: &[u8; MAX_PACKET_SIZE],
@@ -189,13 +192,13 @@ impl<'a> Machine<'a> {
                     // Handle incoming write request (read).
                     OpCode::WriteRequest => {
                         let filename = self.parse_request(received)?;
-                        self.request_type = Some(RequestType::Read);
+                        self.transfer_type = Some(TransferType::Read);
                         Ok(filename)
                     }
                     // Handle incoming read request (write).
                     OpCode::ReadRequest => {
                         let filename = self.parse_request(received)?;
-                        self.request_type = Some(RequestType::Write);
+                        self.transfer_type = Some(TransferType::Write);
                         Ok(filename)
                     }
                     // This was an attempt to send us transfer messages when there is no connection,
@@ -233,7 +236,7 @@ impl<'a> Machine<'a> {
                 match opcode_match {
                     // Handle ack if we are writing.
                     OpCode::Acknowledgement => {
-                        if let Some(RequestType::Write) = self.request_type {
+                        if let Some(TransferType::Write) = self.transfer_type {
                             self.handle_ack_and_send_next_block(received, outgoing)
                         } else {
                             Err(TftprsError::BadPacketReceived)
@@ -241,7 +244,7 @@ impl<'a> Machine<'a> {
                     }
                     // Handle data if we are reading.
                     OpCode::Data => {
-                        if let Some(RequestType::Read) = self.request_type {
+                        if let Some(TransferType::Read) = self.transfer_type {
                             self.handle_data_and_send_ack(
                                 received,
                                 length - FIXED_DATA_BYTES,

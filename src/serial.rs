@@ -10,7 +10,7 @@ use std::cmp::min;
 use crate::constants::ErrorCode;
 use crate::constants::Mode;
 use crate::constants::OpCode;
-use crate::constants::RequestType;
+use crate::constants::TransferType;
 
 use crate::errors::TftprsError;
 
@@ -27,7 +27,7 @@ pub(crate) trait Serial {
 #[derive(Debug, Clone)]
 pub(crate) struct Request {
     // RRQ and WRQ packets (opcodes 1 and 2 respectively)
-    request: RequestType,
+    request: TransferType,
     // The file name is a sequence of bytes in netascii.
     filename: String,
     // The mode field contains the string "netascii", "octet", or "mail" (or any combination of upper
@@ -46,7 +46,7 @@ impl Request {
     }
 
     pub(crate) fn new(
-        request: RequestType,
+        request: TransferType,
         mode: Mode,
         filename: String,
     ) -> Result<Self, TftprsError> {
@@ -182,7 +182,7 @@ mod test {
     use super::*;
     #[test]
     fn test_read_request() {
-        let request = Request::new(RequestType::Read, Mode::Binary, String::from("ABCDE"));
+        let request = Request::new(TransferType::Read, Mode::Binary, String::from("ABCDE"));
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         request.unwrap().serialize(&mut tx_buffer);
         let expected: [u8; 14] = [
@@ -193,7 +193,7 @@ mod test {
 
     #[test]
     fn test_write_request() {
-        let request = Request::new(RequestType::Write, Mode::Text, String::from("ABCDE"));
+        let request = Request::new(TransferType::Write, Mode::Text, String::from("ABCDE"));
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         request.unwrap().serialize(&mut tx_buffer);
         let expected: [u8; 17] = [
@@ -206,7 +206,7 @@ mod test {
     #[test]
     fn test_bad_request() {
         let request = Request::new(
-            RequestType::Write,
+            TransferType::Write,
             Mode::Binary,
             String::from(['H'; 512].iter().collect::<String>()),
         );
