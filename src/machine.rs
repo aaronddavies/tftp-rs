@@ -74,7 +74,7 @@ impl<'a> Machine<'a> {
         self.request_type
     }
 
-    /// Indicates what format of file is being transferred. THe default is binary.
+    /// Indicates what format of file is being transferred. The default is binary.
     pub fn mode(&self) -> Mode {
         self.mode
     }
@@ -267,7 +267,7 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Formulate an error and write it to the transmit buffer. THe caller can do this at any time.
+    /// Formulate an error and write it to the transmit buffer. The caller can do this at any time.
     /// This operation automatically resets the machine.
     pub fn send_error(
         &mut self,
