@@ -153,7 +153,7 @@ impl<'a> Machine<'a> {
                     }
                     // Handle incoming read request (write).
                     OpCode::ReadRequest => {
-                        let filename= self.parse_request(received)?;
+                        let filename = self.parse_request(received)?;
                         self.request_type = Some(RequestType::Write);
                         Ok(filename)
                     }
@@ -383,6 +383,6 @@ impl<'a> Machine<'a> {
             self.reset();
         }
         // Acknowledge the received data.
-    self.send_ack(outgoing)
+        self.send_ack(outgoing)
     }
 }

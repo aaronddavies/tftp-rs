@@ -1,11 +1,11 @@
 //! Serialization of messages
 
-use std::cmp::min;
 use crate::constants::BINARY_MODE;
 use crate::constants::FIXED_REQUEST_BYTES;
 use crate::constants::MAX_DATA_SIZE;
 use crate::constants::MAX_PACKET_SIZE;
 use crate::constants::TEXT_MODE;
+use std::cmp::min;
 
 use crate::constants::ErrorCode;
 use crate::constants::Mode;
@@ -93,12 +93,9 @@ impl<'a> Data<'a> {
             return None;
         }
         if (block - 1) as usize * MAX_DATA_SIZE > data.len() {
-            return None
+            return None;
         }
-        Some(Self {
-            block,
-            data,
-        })
+        Some(Self { block, data })
     }
 
     fn offset(&self) -> usize {
@@ -112,7 +109,11 @@ impl<'a> Serial for Data<'a> {
         write_bytes(buffer, &mut head, &(OpCode::Data as u16).to_be_bytes());
         write_bytes(buffer, &mut head, &self.block.to_be_bytes());
         let count = min(MAX_DATA_SIZE, self.data.len() - self.offset());
-        write_bytes(buffer, &mut head, &self.data[self.offset()..self.offset() + count]);
+        write_bytes(
+            buffer,
+            &mut head,
+            &self.data[self.offset()..self.offset() + count],
+        );
         head
     }
 }
@@ -130,7 +131,11 @@ impl Ack {
 impl Serial for Ack {
     fn serialize(&self, buffer: &mut [u8; MAX_PACKET_SIZE]) -> usize {
         let mut head = 0;
-        write_bytes(buffer, &mut head, &(OpCode::Acknowledgement as u16).to_be_bytes());
+        write_bytes(
+            buffer,
+            &mut head,
+            &(OpCode::Acknowledgement as u16).to_be_bytes(),
+        );
         write_bytes(buffer, &mut head, &self.block.to_be_bytes());
         head
     }
@@ -177,29 +182,24 @@ mod test {
     use super::*;
     #[test]
     fn test_read_request() {
-        let request = Request::new(
-            RequestType::Read,
-            Mode::Binary,
-            String::from("ABCDE")
-        );
+        let request = Request::new(RequestType::Read, Mode::Binary, String::from("ABCDE"));
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         request.unwrap().serialize(&mut tx_buffer);
-        let expected: [u8; 14] =
-            [0x0, 0x1, 0x41, 0x42, 0x43, 0x44, 0x45, 0x0, 0x4F, 0x43, 0x54, 0x45, 0x54, 0x0];
+        let expected: [u8; 14] = [
+            0x0, 0x1, 0x41, 0x42, 0x43, 0x44, 0x45, 0x0, 0x4F, 0x43, 0x54, 0x45, 0x54, 0x0,
+        ];
         assert_eq!(expected, tx_buffer[0..14]);
     }
 
     #[test]
     fn test_write_request() {
-        let request = Request::new(
-            RequestType::Write,
-            Mode::Text,
-            String::from("ABCDE")
-        );
+        let request = Request::new(RequestType::Write, Mode::Text, String::from("ABCDE"));
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         request.unwrap().serialize(&mut tx_buffer);
-        let expected: [u8; 17] =
-            [0x0, 0x2, 0x41, 0x42, 0x43, 0x44, 0x45, 0x0, 0x4E, 0x45, 0x54, 0x41, 0x53, 0x43, 0x49, 0x49, 0x0];
+        let expected: [u8; 17] = [
+            0x0, 0x2, 0x41, 0x42, 0x43, 0x44, 0x45, 0x0, 0x4E, 0x45, 0x54, 0x41, 0x53, 0x43, 0x49,
+            0x49, 0x0,
+        ];
         assert_eq!(expected, tx_buffer[0..17]);
     }
 
@@ -208,7 +208,7 @@ mod test {
         let request = Request::new(
             RequestType::Write,
             Mode::Binary,
-            String::from(['H'; 512].iter().collect::<String>())
+            String::from(['H'; 512].iter().collect::<String>()),
         );
         assert!(request.is_err());
     }
@@ -219,8 +219,7 @@ mod test {
         let data = Data::new(1, &my_datagram);
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         data.unwrap().serialize(&mut tx_buffer);
-        let expected: [u8; 6] =
-            [0x0, 0x3, 0x0, 0x1, 0x5a, 0xa5];
+        let expected: [u8; 6] = [0x0, 0x3, 0x0, 0x1, 0x5a, 0xa5];
         assert_eq!(expected, tx_buffer[0..6]);
 
         // cannot send a second one
@@ -230,7 +229,7 @@ mod test {
 
     #[test]
     fn test_full_packet_data() {
-        let my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE);
+        let my_datagram: Vec<u8> = vec![0x5A; MAX_DATA_SIZE];
         let data = Data::new(1, &my_datagram);
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
         data.unwrap().serialize(&mut tx_buffer);
@@ -244,7 +243,7 @@ mod test {
 
     #[test]
     fn test_full_packet_data_and_one() {
-        let mut my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE + 1);
+        let mut my_datagram: Vec<u8> = vec![0x5A; MAX_DATA_SIZE + 1];
         my_datagram[MAX_DATA_SIZE] = 0xA5;
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
 
@@ -267,7 +266,7 @@ mod test {
 
     #[test]
     fn test_three_packets() {
-        let mut my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE * 2 + 1);
+        let mut my_datagram: Vec<u8> = vec![0x5A; MAX_DATA_SIZE * 2 + 1];
         my_datagram[MAX_DATA_SIZE * 2] = 0xA5;
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
 
