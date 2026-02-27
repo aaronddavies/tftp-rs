@@ -84,4 +84,3 @@ impl TryFrom<u16> for ErrorCode {
         }
     }
 }
-

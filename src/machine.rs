@@ -15,16 +15,14 @@ use crate::serial::{Data, Request};
 const TERMINATOR_BYTE: u8 = 0x0;
 
 /// This machine operates as the transfer engine for the protocol. It provides an interface for
-/// initiating transfers and for handling transfer requests.
+/// initiating transfers and for handling transfer requests. It will process incoming messages and
+/// provide the caller formatted outgoing messages in reply.
 ///
-/// It will process incoming messages and provide the caller formatted outgoing messages in reply.
-///
-/// It is completely synchronous and network-agnostic. Therefore, it is up to the caller to:
-///  * Perform actual network send and receive operations.
+/// The machine is synchronous and network-agnostic. Therefore, it is up to the caller to:
+///  * Perform actual network send and receive operations, and provide the byte buffers for receiving and transmitting messages.
 ///  * Handle timing in between messages per the advice in the RFC.
-///  * Respond to requests with a file for reading or writing.
-///  * Provide a reference to the requested file that lives as long as this machine does.
-///  * Manage byte buffers for receiving and transmitting messages.
+///  * Respond to remote requests with the file for reading or the destination file for writing.
+///  * Provide a reference to the target file that lives as long as this machine does. In the case of mutable reference, it must be exclusively held by the machine.
 #[derive(Debug, Default)]
 pub struct Machine<'a> {
     request_type: Option<RequestType>,
@@ -265,15 +263,14 @@ impl<'a> Machine<'a> {
     }
 
     /// Formulate an error and write it to the transmit buffer. THe caller can do this at any time.
-    /// This oeration automatically resets the machine.
+    /// This operation automatically resets the machine.
     pub fn send_error(
         &mut self,
         code: ErrorCode,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
         message: String,
     ) -> Result<usize, TftprsError> {
-        let error_message =
-            ErrorResponse::new(code, message);
+        let error_message = ErrorResponse::new(code, message);
         let count = error_message.serialize(outgoing);
         self.reset();
         Ok(count)
@@ -299,10 +296,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Helper to parse an incoming request from a peer.
-    fn parse_request(
-        &mut self,
-        received: &[u8; MAX_PACKET_SIZE],
-    ) -> Result<String, TftprsError> {
+    fn parse_request(&mut self, received: &[u8; MAX_PACKET_SIZE]) -> Result<String, TftprsError> {
         let mut cursor: usize = 2;
         let filename = Self::parse_string(
             received,
@@ -321,9 +315,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Helper to parse an error message from a peer.
-    fn parse_error(
-        received: &[u8; MAX_PACKET_SIZE],
-    ) -> TftprsError {
+    fn parse_error(received: &[u8; MAX_PACKET_SIZE]) -> TftprsError {
         let mut cursor: usize = 2;
         if let Ok(error_code_bytes) = received[cursor..cursor + 2].try_into() {
             let Ok(error_code) = u16::from_be_bytes(error_code_bytes).try_into();
@@ -339,10 +331,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Verifies that the block specified in the incoming message is as expected.
-    fn check_block_on_message(
-        &self,
-        received: &[u8; MAX_PACKET_SIZE],
-    ) -> Result<(), TftprsError> {
+    fn check_block_on_message(&self, received: &[u8; MAX_PACKET_SIZE]) -> Result<(), TftprsError> {
         if let Ok(block_bytes) = received[2..4].try_into() {
             let block = u16::from_be_bytes(block_bytes);
             if block != self.block {
@@ -404,7 +393,7 @@ impl<'a> Machine<'a> {
         self.check_block_on_message(received)?;
         if let Some(file) = &mut self.incoming_file {
             // Write the received data.
-            for i in 0 .. length {
+            for i in 0..length {
                 let idx = FIXED_DATA_BYTES + i;
                 file.push(received[idx]);
             }

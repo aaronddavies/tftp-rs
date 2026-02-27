@@ -5,10 +5,10 @@ pub(crate) mod serial;
 
 mod tests {
     #[cfg(test)]
-    use crate::machine::*;
-    #[cfg(test)]
     use crate::constants::*;
     use crate::errors::TftprsError;
+    #[cfg(test)]
+    use crate::machine::*;
     #[cfg(test)]
     use crate::serial::*;
 
@@ -20,7 +20,9 @@ mod tests {
         let mut tx = [0u8; MAX_PACKET_SIZE];
         let mut rx = [0u8; MAX_PACKET_SIZE];
         // Send request
-        let count =machine.request_send_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("send file");
+        let count = machine
+            .request_send_file(String::from("ABCDE"), &mut my_file, &mut tx)
+            .expect("send file");
         assert_eq!(count, 14);
         assert_eq!(tx[1], OpCode::WriteRequest as u8);
         assert_eq!(machine.request_type().unwrap(), RequestType::Write);
@@ -48,7 +50,9 @@ mod tests {
         {
             let mut machine = Machine::new();
             // Send request
-            let count = machine.request_receive_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("receive file");
+            let count = machine
+                .request_receive_file(String::from("ABCDE"), &mut my_file, &mut tx)
+                .expect("receive file");
             assert_eq!(count, 14);
             assert_eq!(tx[1], OpCode::ReadRequest as u8);
 
@@ -162,7 +166,10 @@ mod tests {
             assert!(!machine.is_busy());
             assert_eq!(machine.request_type(), None);
         }
-        assert_eq!(String::from_utf8(my_file).unwrap(), String::from("Hello, world!"));
+        assert_eq!(
+            String::from_utf8(my_file).unwrap(),
+            String::from("Hello, world!")
+        );
     }
 
     #[test]
@@ -173,10 +180,13 @@ mod tests {
         let mut tx = [0u8; MAX_PACKET_SIZE];
         let mut rx = [0u8; MAX_PACKET_SIZE];
         // Send request
-        let _ =machine.request_send_file(String::from("ABCDE"), &mut my_file, &mut tx).expect("send file");
+        let _ = machine
+            .request_send_file(String::from("ABCDE"), &mut my_file, &mut tx)
+            .expect("send file");
         assert!(machine.is_busy());
         // Process error
-        let error_received = ErrorResponse::new(ErrorCode::FileNotFound, String::from("File not found"));
+        let error_received =
+            ErrorResponse::new(ErrorCode::FileNotFound, String::from("File not found"));
         let count = error_received.serialize(&mut rx);
         let e = machine.process(&rx, count, &mut tx).err().unwrap();
         match e {
@@ -189,5 +199,28 @@ mod tests {
             }
         }
         assert!(!machine.is_busy());
+    }
+
+    #[test]
+    fn test_generate_error_response() {
+        let mut rx = [0u8; MAX_PACKET_SIZE];
+        let mut tx = [0u8; MAX_PACKET_SIZE];
+
+        let mut machine = Machine::new();
+        // Send request
+        let request = Request::new(RequestType::Read, Mode::Binary, String::from("ABCDE"));
+        request.unwrap().serialize(&mut rx);
+        let _ = machine.listen_for_request(&rx);
+
+        // Decide that there is no such file.
+        machine
+            .send_error(
+                ErrorCode::FileNotFound,
+                &mut tx,
+                String::from("File not found"),
+            )
+            .unwrap();
+        assert!(!machine.is_busy());
+        assert_eq!(machine.request_type(), None);
     }
 }
