@@ -42,6 +42,7 @@ impl<'a> Machine<'a> {
 
     /// Resets the machine to an idle state.
     pub fn reset(&mut self) {
+        self.request_type = None;
         self.file = None;
         self.block = 0;
     }
@@ -211,7 +212,7 @@ impl<'a> Machine<'a> {
                     }
                     // Terminate on error.
                     OpCode::Error => {
-                        self.request_type = None;
+                        self.reset();
                         Ok(0)
                     }
                     // This was an attempt to send us a request when we already busy.
@@ -233,6 +234,10 @@ impl<'a> Machine<'a> {
         file: &'a mut Vec<u8>,
         outgoing: &mut [u8; MAX_PACKET_SIZE],
     ) -> Result<usize, TftprsError> {
+        // Do not allow files that are too large for the block field.
+        if file.len() > u16::MAX as usize * MAX_DATA_SIZE {
+            return Err(TftprsError::BadRequestAttempted);
+        }
         if let Ok(request) = Request::new(request_type, self.mode, filename) {
             let count = request.serialize(outgoing);
             if request.serialize(outgoing) > 0 {
@@ -323,7 +328,7 @@ impl<'a> Machine<'a> {
                 let count = data.serialize(outgoing);
                 Ok(count)
             } else {
-                self.request_type = None;
+                self.reset();
                 Ok(0)
             }
         } else {
@@ -339,9 +344,15 @@ impl<'a> Machine<'a> {
     ) -> Result<usize, TftprsError> {
         // Verify the header.
         self.check_block_on_message(received)?;
-        // Advance the block for the next write.
-        self.block = self.block.wrapping_add(1);
-        self.send_block(outgoing)
+        if self.block == u16::MAX {
+            // For safety, automatically terminate.
+            self.reset();
+            Ok(0)
+        } else {
+            // Advance the block for the next write.
+            self.block += 1;
+            self.send_block(outgoing)
+        }
     }
 
     /// Send an ack.
@@ -367,14 +378,11 @@ impl<'a> Machine<'a> {
         } else {
             return Err(TftprsError::NoFile);
         }
-        if length < MAX_DATA_SIZE {
+        if length < MAX_DATA_SIZE || self.block == u16::MAX {
             // If there is no more data coming, then terminate.
-            self.request_type = None;
-        } else {
-            // Otherwise, advance for the next data packet.
-            self.block = self.block.wrapping_add(1);
+            self.reset();
         }
         // Acknowledge the received data.
-        self.send_ack(outgoing)
+    self.send_ack(outgoing)
     }
 }

@@ -101,7 +101,7 @@ impl<'a> Data<'a> {
         })
     }
 
-    pub(crate) fn offset(&self) -> usize {
+    fn offset(&self) -> usize {
         (self.block - 1) as usize * MAX_DATA_SIZE
     }
 }
@@ -204,6 +204,16 @@ mod test {
     }
 
     #[test]
+    fn test_bad_request() {
+        let request = Request::new(
+            RequestType::Write,
+            Mode::Binary,
+            String::from(['H'; 512].iter().collect::<String>())
+        );
+        assert!(request.is_err());
+    }
+
+    #[test]
     fn test_one_small_gram_data() {
         let my_datagram: Vec<u8> = vec![0x5a, 0xa5];
         let data = Data::new(1, &my_datagram);
@@ -219,7 +229,7 @@ mod test {
     }
 
     #[test]
-    fn test_largest_data() {
+    fn test_full_packet_data() {
         let my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE);
         let data = Data::new(1, &my_datagram);
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
@@ -233,7 +243,7 @@ mod test {
     }
 
     #[test]
-    fn test_largest_data_and_one() {
+    fn test_full_packet_data_and_one() {
         let mut my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE + 1);
         my_datagram[MAX_DATA_SIZE] = 0xA5;
         let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
@@ -255,5 +265,39 @@ mod test {
         assert_eq!(expected, tx_buffer[0..5]);
     }
 
+    #[test]
+    fn test_three_packets() {
+        let mut my_datagram: Vec<u8> = vec!(0x5A; MAX_DATA_SIZE * 2 + 1);
+        my_datagram[MAX_DATA_SIZE * 2] = 0xA5;
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
 
+        let data = Data::new(3, &my_datagram);
+        data.unwrap().serialize(&mut tx_buffer);
+        let expected: [u8; 5] = [0x0, 0x3, 0x0, 0x3, 0xA5];
+        assert_eq!(expected, tx_buffer[0..5]);
+    }
+
+    #[test]
+    fn test_ack() {
+        let my_ack = Ack::new(0);
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        my_ack.serialize(&mut tx_buffer);
+        let expected: [u8; 4] = [0x0, 0x4, 0x0, 0x0];
+        assert_eq!(expected, tx_buffer[0..4]);
+
+        let my_ack = Ack::new(257);
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        my_ack.serialize(&mut tx_buffer);
+        let expected: [u8; 4] = [0x0, 0x4, 0x1, 0x1];
+        assert_eq!(expected, tx_buffer[0..4]);
+    }
+
+    #[test]
+    fn test_error() {
+        let my_error = Error::new(ErrorCode::DiskFull, String::from("WRONG"));
+        let mut tx_buffer = [0u8; MAX_PACKET_SIZE];
+        my_error.serialize(&mut tx_buffer);
+        let expected: [u8; 10] = [0x0, 0x5, 0x0, 0x3, 0x57, 0x52, 0x4F, 0x4E, 0x47, 0x0];
+        assert_eq!(expected, tx_buffer[0..10]);
+    }
 }
