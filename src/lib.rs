@@ -1,10 +1,10 @@
 //! This library provides an implementation of the Trivial File Transfer Protocol per RFC 1350 Rev 2.
-//! The caller can use the interface in one of two ways:
+//! The host can use the interface in one of two ways:
 //!
 //! * Listening for requests
 //!  * Initiating a request
 //!
-//! The caller by default attempts to process a spontaneous incoming message as if it were a request.
+//! The host by default attempts to process a spontaneous incoming message as if it were a request.
 //! The message is spontaneous if no transfer is currently active.
 //!
 //! Once a transfer is active, the messages are processed with the same method regardless whether

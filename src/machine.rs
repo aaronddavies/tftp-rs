@@ -16,9 +16,9 @@ const TERMINATOR_BYTE: u8 = 0x0;
 
 /// This machine operates as the transfer engine for the protocol. It provides an interface for
 /// initiating transfers and for handling transfer requests. It will process incoming messages and
-/// provide the caller formatted outgoing messages in reply.
+/// provide the host formatted outgoing messages in reply.
 ///
-/// The machine is synchronous and network-agnostic. Therefore, it is up to the caller to:
+/// The machine is synchronous and network-agnostic. Therefore, it is up to the host to:
 ///  * Perform actual network send and receive operations, and provide the byte buffers for receiving and transmitting messages.
 ///  * Handle timing in between messages per the advice in the RFC.
 ///  * Respond to remote requests with the file for reading or the destination file for writing.
@@ -66,9 +66,9 @@ impl<'a> Machine<'a> {
         self.request_type.is_some()
     }
 
-    /// Informs the caller what kind of request, from the perspective of the caller, is being performed.
-    /// For example, if the caller initiates a write request, this type will reflect it. If the remote peer
-    /// initiates a write request, this will be reflected as a read request. If the caller receives a request,
+    /// Informs the host what kind of request, from the perspective of the host, is being performed.
+    /// For example, if the host initiates a write request, this type will reflect it. If the remote peer
+    /// initiates a write request, this will be reflected as a read request. If the host receives a request,
     /// it should check this type to determine whether to send a file or receive a file in reply.
     pub fn request_type(&self) -> Option<RequestType> {
         self.request_type
@@ -141,8 +141,8 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Responds to a request from a remote peer to read / receive a file from the caller. This is
-    /// a write request from the caller's perspective.
+    /// Responds to a request from a remote peer to read / receive a file from the host. This is
+    /// a write request from the host's perspective.
     pub fn reply_send_file(
         &mut self,
         file: &'a Vec<u8>,
@@ -156,8 +156,8 @@ impl<'a> Machine<'a> {
         self.send_block(outgoing)
     }
 
-    /// Responds to a request from a remote peer to write / send a file to the caller. This is a
-    /// read request from the caller's perspective.
+    /// Responds to a request from a remote peer to write / send a file to the host. This is a
+    /// read request from the host's perspective.
     pub fn reply_receive_file(
         &mut self,
         file: &'a mut Vec<u8>,
@@ -211,7 +211,7 @@ impl<'a> Machine<'a> {
     }
 
     /// Processes incoming messages while a transfer is active. It does not matter who initiated the transfer,
-    /// whether it was the caller or the remote peer.
+    /// whether it was the host or the remote peer.
     pub fn process(
         &mut self,
         received: &[u8; MAX_PACKET_SIZE],
@@ -267,7 +267,7 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// Formulate an error and write it to the transmit buffer. The caller can do this at any time.
+    /// Formulate an error and write it to the transmit buffer. The host can do this at any time.
     /// This operation automatically resets the machine.
     pub fn send_error(
         &mut self,
